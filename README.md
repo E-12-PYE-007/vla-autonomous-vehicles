@@ -1,7 +1,3 @@
-<<<<<<< HEAD
-# vla-autonomous-vehicles
-E-12-PYE-007-Vision-Language-Action Models for Autonomous Vehicles
-=======
 # Earthrover VLA Workspace
 
 This workspace is split into separate ROS 2 packages for robot description, simulation, and top-level bringup.
@@ -121,4 +117,3 @@ ros2 launch earthrover_vla_bringup launch.py hardware:=true
 - The simulation Xacro uses package-based includes, so the workspace must be built and sourced before those lookups work.
 - The world file currently used by simulation is `empty_world_cam.sdf`.
 - The top-level bringup script is intentionally simple and acts as the mode selector for future sim and hardware launch paths.
->>>>>>> a88546b (Initial commit - basic package structure and setup for sim)
