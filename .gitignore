@@ -1,0 +1,25 @@
+# ROS 2 / colcon workspace artifacts
+/build/
+/install/
+/log/
+
+# Python cache artifacts
+__pycache__/
+*.py[cod]
+
+# Editor / IDE files
+.idea/
+*.swp
+*.swo
+*~
+
+# VS Code workspace files
+.vscode/*
+
+# VS Code generated databases
+*.vc.db
+*.vc.db-shm
+*.vc.db-wal
+
+# Local Codex workspace marker
+.codex
