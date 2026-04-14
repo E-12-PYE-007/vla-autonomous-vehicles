@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<!-- 
+Top level xacro file specific to sim
+Simply includes xacro from description pkg and gazebo specific references in robot.gazebo
+-->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="earthrover_vla">
+  <xacro:include filename="$(find earthrover_vla_description)/urdf/robot.xacro"/>
+  <xacro:include filename="$(find earthrover_vla_simulation)/urdf/robot.gazebo"/>
+</robot>

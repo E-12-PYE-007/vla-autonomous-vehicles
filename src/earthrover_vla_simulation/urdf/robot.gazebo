@@ -1,0 +1,105 @@
+<?xml version= "1.0"?>
+<!-- Overlay file to add necessary gazebo references for simulation -->
+<robot>
+
+<gazebo reference="body_link">
+    <mu1>0.2</mu1>
+    <mu2>0.2</mu2>
+    <material>Gazebo/Red</material>
+</gazebo>
+
+<gazebo reference="wheel1_link">
+    <mu1>0.2</mu1>
+    <mu2>0.2</mu2>
+    <material>Gazebo/Yellow</material>
+</gazebo>
+
+<gazebo reference="wheel2_link">
+    <mu1>0.2</mu1>
+    <mu2>0.2</mu2>
+    <material>Gazebo/Yellow</material>
+</gazebo>
+
+<gazebo reference="wheel3_link">
+    <mu1>0.2</mu1>
+    <mu2>0.2</mu2>
+    <material>Gazebo/Yellow</material>
+</gazebo>
+
+<gazebo reference="wheel4_link">
+    <mu1>0.2</mu1>
+    <mu2>0.2</mu2>
+    <material>Gazebo/Yellow</material>
+</gazebo>
+
+<!-- Gazebo reference info for camera sensor -->
+
+<gazebo reference="cam_link">
+    <material>Gazebo/Black</material>
+
+    <sensor name="cam" type="camera">
+        <topic>/cam</topic>
+        <visualize>true</visualize>
+        <update_rate>10</update_rate>
+        <camera>
+            <!-- Field of view - should check this -->
+            <horizontal_fov>1.089</horizontal_fov>
+            <image>
+                <!-- 8 bits of each of RGB -->
+                <format>R8G8B8</format>
+                <!-- Width and height of the image (confirmed) -->
+                <width>1024</width>
+                <height>576</height>
+            </image>
+            <!-- Clipping settings for the camera (i.e. minimum and maximum range -->
+            <clip>
+                <near>0.05</near>
+                <far>8.0</far>
+            </clip>
+        </camera>
+        <!-- <plugin name="camera_controller" filename="libgazebo_ros_camera">
+            <frame_name>cam_link_optical</frame_name>
+        </plugin> -->
+    </sensor>
+
+
+</gazebo>
+
+
+
+
+<!-- Caster removed for 4 wheel robot
+<gazebo reference="caster_link">
+    <mu1>0.000002</mu1>
+    <mu2>0.000002</mu2>
+    <material>Gazebo/Blue</material>
+</gazebo> -->
+
+
+<gazebo>
+<plugin filename="gz-sim-diff-drive-system" name="gz::sim::systems::DiffDrive">
+
+    <!-- Wheels -->
+        <right_joint>wheel1_joint</right_joint>
+        <left_joint>wheel2_joint</left_joint>
+        <right_joint>wheel3_joint</right_joint>
+        <left_joint>wheel4_joint</left_joint>
+    <!-- Kinematrics-->
+        <wheel_separation>${2*s4}</wheel_separation>
+        <wheel_radius>${r}</wheel_radius>
+    
+    <!-- Limits-->
+        <max_linear_acceleration>10</max_linear_acceleration>
+
+    <!-- Topics, frames, and odometry -->
+        <topic>cmd_vel</topic>
+        <tf_topic>tf</tf_topic>
+        <odom_topic>odom</odom_topic>
+        <frame_id>odom</frame_id>
+        <child_frame_id>base_footprint</child_frame_id>
+        <odom_publisher_frequency>30</odom_publisher_frequency>
+</plugin>
+
+</gazebo>
+
+</robot>
