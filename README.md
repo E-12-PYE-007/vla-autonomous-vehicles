@@ -117,3 +117,65 @@ ros2 launch earthrover_vla_bringup launch.py hardware:=true
 - The simulation Xacro uses package-based includes, so the workspace must be built and sourced before those lookups work.
 - The world file currently used by simulation is `empty_world_cam.sdf`.
 - The top-level bringup script is intentionally simple and acts as the mode selector for future sim and hardware launch paths.
+
+# AsyncVLA ROS 2 Integration
+The system:
+- takes camera input
+- accepts a goal (text or image)
+- runs AsyncVLA inference
+- outputs velocity commands (/cmd_vel)
+
+## System Overview 
+
+The pipeline consists of three main ROS 2 nodes:
+
+1. Goal Publisher Node
+
+- Publishes a goal to the system:
+    Text goal (e.g. "go to the red object")
+    Image goal (reference image)
+- Topic: /asyncvla/goal
+
+2. AsyncVLA Inference Node
+
+- Subscribes to:
+    camera images (/cam)
+    goal (/asyncvla/goal)
+- Runs AsyncVLA model
+- Outputs predicted trajectory
+- Publishes: /asyncvla/action_chunk
+
+3. Controller Node
+
+- Converts predicted trajectory → robot motion
+- Uses a lookahead + proportional controller
+- Outputs velocity commands
+- Publishes: /cmd_vel
+
+## Launch exmaple
+
+Using a text goal: 
+
+ros2 launch asyncvla_ros <your_launch_file>.py \goal_mode:=text \goal_text:="go to the chocolate bar"
+
+Using an image goal:
+
+ros2 launch asyncvla_ros <your_launch_file>.py \goal_mode:=image \image_path:=/home/<user>/goal.png
+
+## Node Details
+
+Goal Publisher Node
+
+Publishes a goal to the system. It can send either a text instruction (e.g., “go to the red object”) or an image representing the target. The goal is published once at startup to /asyncvla/goal, and the rest of the system uses this as the objective for navigation.
+
+AsyncVLA Inference Node
+
+Acts as the core of the system. It subscribes to camera images and the goal, processes them, and runs the AsyncVLA model. The model predicts a short sequence of future relative poses (a trajectory), which is then published as an ActionChunk message on /asyncvla/action_chunk.
+
+Controller Node
+
+Takes the predicted trajectory and converts it into robot motion commands. It selects a lookahead point from the trajectory, computes linear and angular velocities using a proportional control approach, applies smoothing and limits, and publishes the final commands to /cmd_vel.
+
+AsyncVLA Backend
+
+Handles all interaction with the AsyncVLA model itself. It loads the model, prepares inputs (images, text, or pose goals), writes required image files, runs inference using the official AsyncVLA code, and converts the model output into a list of relative poses (x, y, θ) for the controller.
