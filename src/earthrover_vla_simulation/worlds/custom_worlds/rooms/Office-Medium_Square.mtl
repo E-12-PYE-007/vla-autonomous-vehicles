@@ -1,0 +1,32 @@
+# Blender 5.1.0 MTL File: 'Office-Medium_Square.blend'
+# www.blender.org
+
+newmtl Carpet
+Ns 0.000000
+Ka 1.000000 1.000000 1.000000
+Ks 0.000000 0.000000 0.000000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+d 1.000000
+illum 1
+map_Kd /home/jeremy-cox/Custom_Worlds/textures/carpet.jpg
+
+newmtl Wall
+Ns 250.000000
+Ka 1.000000 1.000000 1.000000
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+d 1.000000
+illum 2
+map_Kd /home/jeremy-cox/Custom_Worlds/textures/wall.jpg
+
+newmtl Wood
+Ns 250.000000
+Ka 1.000000 1.000000 1.000000
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+d 1.000000
+illum 2
+map_Kd /home/jeremy-cox/Custom_Worlds/textures/wood.jpg
