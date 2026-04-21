@@ -9,3 +9,7 @@ export GZ_SIM_RESOURCE_PATH=$PWD/src/earthrover_vla_simulation/worlds/custom_wor
 
 # Launch Gazebo with the desired world
 gz sim $PWD/src/earthrover_vla_simulation/worlds/unempty_office_square.sdf
+
+
+# generate random worlds - gets generated to generated_world.sdf
+python3 src/earthrover_vla_simulation/worlds/object_spawner/generator.py --config src/earthrover_vla_simulation/worlds/object_spawner/configs/office_square.yaml --count 5 --seed 42
