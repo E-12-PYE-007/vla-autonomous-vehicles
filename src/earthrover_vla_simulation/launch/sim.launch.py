@@ -2,13 +2,17 @@
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription
+from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument, OpaqueFunction
 from launch.launch_description_sources  import PythonLaunchDescriptionSource
-
+from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 import xacro
 
-def generate_launch_description():
+def launch_with_custom_world(context):
+    # Extract worldfile and name from launch args. Note world name must match worldfile path name.
+    worldfile = LaunchConfiguration('worldfile').perform(context)
+    world_name = os.path.splitext(os.path.basename(worldfile))[0]
+
     #Must match robot name in Xacro file
     robotXacroName='earthrover_vla'
 
@@ -25,8 +29,7 @@ def generate_launch_description():
     pathModelFile = os.path.join(get_package_share_directory(simulation_package), modelFileRealtivePath)
     
     #For custom world file relative path
-    worldName = 'empty_world_cam'
-    worldFileRelativePath = f'worlds/{worldName}.sdf'
+    worldFileRelativePath = f'worlds/{worldfile}'
 
     # for custom world model
     pathWorldFile = os.path.join(get_package_share_directory(simulation_package),worldFileRelativePath)
@@ -48,7 +51,7 @@ def generate_launch_description():
         package='ros_gz_sim',
         executable='create',
         arguments=[
-            '-world', 'empty_world_cam',
+            '-world', world_name,
             '-name', robotXacroName,
             '-topic', 'robot_description'
         ],
@@ -83,15 +86,23 @@ def generate_launch_description():
         output='screen'
     )
 
-    # create an empty launch description object
-    launchDescriptionObject = LaunchDescription()
-    
-    # add gazebolaunch
-    launchDescriptionObject.add_action(gazeboLaunch)
+    # Return all the nodes to be included in the launch obj
+    return[
+        gazeboLaunch,
+        spawnModelNodeGazebo,
+        nodeRobotStatePublisher,
+        state_gazebo_ros_bridge_cmd
+    ]
 
-    # add the two nodes
-    launchDescriptionObject.add_action(spawnModelNodeGazebo)
-    launchDescriptionObject.add_action(nodeRobotStatePublisher)
-    launchDescriptionObject.add_action(state_gazebo_ros_bridge_cmd)
 
-    return launchDescriptionObject
+def generate_launch_description():
+    return LaunchDescription([
+
+        DeclareLaunchArgument(
+            'worldfile',
+            default_value = 'empty_world_cam.sdf',
+            description = 'World file to use when simulating. Path relative to worlds directory. Defaults to empty_world_cam.sdf. Note world name must match path name.',
+        ),
+        
+        OpaqueFunction(function=launch_with_custom_world),
+    ])
