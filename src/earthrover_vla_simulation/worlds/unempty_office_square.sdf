@@ -59,14 +59,14 @@
         <visual name='visual'>
           <geometry>
             <mesh>
-              <uri>file:///home/jeremy-cox/Capstone/repo/vla-autonomous-vehicles/src/earthrover_vla_simulation/worlds/custom_worlds/rooms/Office-Medium_Square.obj</uri>
+              <uri>custom_worlds/rooms/Office-Medium_Square.obj</uri>
             </mesh>
           </geometry>
         </visual>
         <collision name='collision'>
           <geometry>
             <mesh>
-              <uri>file:///home/jeremy-cox/Capstone/repo/vla-autonomous-vehicles/src/earthrover_vla_simulation/worlds/custom_worlds/rooms/Office-Medium_Square.obj</uri>
+              <uri>custom_worlds/rooms/Office-Medium_Square.obj</uri>
             </mesh>
           </geometry>
         </collision>
@@ -89,32 +89,37 @@
       <self_collide>false</self_collide>
     </model>
     <include>
-      <uri>file:///home/jeremy-cox/Capstone/repo/vla-autonomous-vehicles/src/earthrover_vla_simulation/worlds/custom_worlds/local_models/Office Desk</uri>
+      <uri>model://Office Desk</uri>
       <name>Desk</name>
       <pose>1.6629799604415894 1.0508500337600708 0 0 0 0.13792099747590078</pose>
     </include>
+
     <include>
-      <uri>file:///home/jeremy-cox/Capstone/repo/vla-autonomous-vehicles/src/earthrover_vla_simulation/worlds/custom_worlds/local_models/Office Chair</uri>
+      <uri>model://Office Chair</uri>
       <name>OfficeChair</name>
       <pose>0.38113600015640259 0.84886002540588379 0 0 0 -1.6822103835116022</pose>
     </include>
+
     <include>
-      <uri>file:///home/jeremy-cox/Capstone/repo/vla-autonomous-vehicles/src/earthrover_vla_simulation/worlds/custom_worlds/local_models/Sofa</uri>
+      <uri>model://Sofa</uri>
       <name>Sofa</name>
       <pose>-1.8744499683380129 -1.3202500343322756 0 0 0 0.045899211138029368</pose>
     </include>
+
     <include>
-      <uri>file:///home/jeremy-cox/Capstone/repo/vla-autonomous-vehicles/src/earthrover_vla_simulation/worlds/custom_worlds/local_models/CoffeeTable</uri>
+      <uri>model://CoffeeTable</uri>
       <name>CoffeeTable</name>
       <pose>-0.74225825977803128 -1.1524859990844394 0 0 0 0</pose>
     </include>
+
     <include>
-      <uri>file:///home/jeremy-cox/Capstone/repo/vla-autonomous-vehicles/src/earthrover_vla_simulation/worlds/custom_worlds/local_models/carboard box</uri>
+      <uri>model://carboard box</uri>
       <name>cardboard_box</name>
       <pose>1.8603700399398804 -0.54706698656082153 0.15000000596046448 0 0 -0.046371581081361218</pose>
     </include>
+
     <include>
-      <uri>file:///home/jeremy-cox/Capstone/repo/vla-autonomous-vehicles/src/earthrover_vla_simulation/worlds/custom_worlds/local_models/MetalCabinet</uri>
+      <uri>model://MetalCabinet</uri>
       <name>MetalCabinet</name>
       <pose>1.7721500396728516 -1.8184000253677368 0 0 0 -1.7240994550009778</pose>
     </include>
