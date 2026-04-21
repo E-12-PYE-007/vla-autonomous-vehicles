@@ -59,14 +59,14 @@
         <visual name='visual'>
           <geometry>
             <mesh>
-              <uri>file:///home/jeremy-cox/Capstone/repo/vla-autonomous-vehicles/src/earthrover_vla_simulation/worlds/custom_worlds/rooms/Office-Hallway.obj</uri>
+              <uri>custom_worlds/rooms/Office-Hallway.obj</uri>
             </mesh>
           </geometry>
         </visual>
         <collision name='collision'>
           <geometry>
             <mesh>
-              <uri>file:///home/jeremy-cox/Capstone/repo/vla-autonomous-vehicles/src/earthrover_vla_simulation/worlds/custom_worlds/rooms/Office-Hallway.obj</uri>
+              <uri>custom_worlds/rooms/Office-Hallway.obj</uri>
             </mesh>
           </geometry>
         </collision>
@@ -88,31 +88,35 @@
       <pose>-1.2130320994978115e-08 4.1010608969150074e-08 0.0072055124430797169 1.5707959033232342 -1.213067812146528e-06 -2.2705391840940411e-12</pose>
       <self_collide>false</self_collide>
     </model>
+        
     <include>
-      <uri>file:///home/jeremy-cox/Capstone/repo/vla-autonomous-vehicles/src/earthrover_vla_simulation/worlds/custom_worlds/local_models/LitterBin</uri>
+      <uri>model://LitterBin</uri>
       <name>LitterBin</name>
       <pose>13.953000068664551 1.5825300216674805 0 0 0 0.42743583484118397</pose>
     </include>
     <include>
-      <uri>file:///home/jeremy-cox/Capstone/repo/vla-autonomous-vehicles/src/earthrover_vla_simulation/worlds/custom_worlds/local_models/carboard box</uri>
+      <uri>model://carboard box</uri>
       <name>cardboard_box</name>
       <pose>14.117999999999999 -1.4766099999999995 0 0 0 -0.20527400000000012</pose>
     </include>
     <include>
-      <uri>file:///home/jeremy-cox/Capstone/repo/vla-autonomous-vehicles/src/earthrover_vla_simulation/worlds/custom_worlds/local_models/ElectronicsRecycling</uri>
+      <uri>model://ElectronicsRecycling</uri>
       <name>ElectronicsRecycling</name>
       <pose>3.1112499237060547 1.8382200002670288 0 0 0 -0.037264863729851688</pose>
     </include>
     <include>
-      <uri>file:///home/jeremy-cox/Capstone/repo/vla-autonomous-vehicles/src/earthrover_vla_simulation/worlds/custom_worlds/local_models/LitterBin</uri>
+      <uri>model://LitterBin</uri>
       <name>LitterBin_0</name>
       <pose>-14.640299797058105 1.6101200580596924 0.01089670043438673 0 0 -0.18858393912399099</pose>
     </include>
     <include>
-      <uri>file:///home/jeremy-cox/Capstone/repo/vla-autonomous-vehicles/src/earthrover_vla_simulation/worlds/custom_worlds/local_models/ElectronicsRecycling</uri>
+      <uri>model://ElectronicsRecycling</uri>
       <name>ElectronicsRecycling_0</name>
       <pose>-14.124319658728396 -1.0149898428729278 0 0 0 0</pose>
-    </include>
+    </include>    
+
+
+
     <light name='ceiling_light_1' type='point'>
       <pose>-10 0 3 0 0 0</pose>
       <cast_shadows>false</cast_shadows>
