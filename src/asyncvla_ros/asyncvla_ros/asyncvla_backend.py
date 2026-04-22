@@ -183,8 +183,8 @@ class AsyncVLABackend:
         if self.model_repo_path not in sys.path:
             sys.path.insert(0, self.model_repo_path)
 
-        # Add visualnav-transformer repo to Python import path if needed
-        visualnav_path = os.path.expanduser("~/models/visualnav-transformer")
+        # Add visualnav-transformer repo to Python import path if needed, double check this!!
+        visualnav_path = os.path.expanduser("~/models/visualnav-transformer/train")
         if visualnav_path not in sys.path:
             sys.path.insert(0, visualnav_path)
 

@@ -18,6 +18,8 @@ setup(
             'asyncvla_inference_node = asyncvla_ros.asyncvla_inference_node:main',
             'asyncvla_controller_node = asyncvla_ros.asyncvla_controller_node:main',
             'goal_publisher_node = asyncvla_ros.goal_publisher_node:main',
+            'frodo_driver_node = asyncvla_ros.frodo_driver_node:main',
+            'rtsp_camera_node = asyncvla_ros.rtsp_camera_node:main',
         ],
     },
 )
