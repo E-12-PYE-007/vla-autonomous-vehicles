@@ -1,14 +1,13 @@
 # generator.py
 
+
 from __future__ import annotations
 
-import argparse
-import math
+import os
 import re
-from pathlib import Path
 
-from assets import load_world_config
-from layout import generate_layout, Placement
+from .assets import load_world_config
+from .layout import generate_layout, Placement
 
 
 def sanitize_name(name: str) -> str:
@@ -35,32 +34,27 @@ def insert_includes_into_world(world_text: str, include_blocks: list[str]) -> st
     return world_text[:idx] + insert_text + world_text[idx:]
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Generate a Gazebo world with random object placement.")
-    parser.add_argument("--config", required=True, help="Path to YAML config file.")
-    parser.add_argument("--count", type=int, required=True, help="Number of objects to place.")
-    parser.add_argument("--seed", type=int, default=None, help="Random seed for reproducible layouts.")
-    args = parser.parse_args()
+def generate_world_file(config_path, count, seed):
 
-    config = load_world_config(args.config)
+    config = load_world_config(config_path)
 
     # create path to world template
-    script_path = Path(__file__).resolve()
-    worlds_dir = script_path.parent.parent  # object_spawner -> worlds
-    template_world_path = worlds_dir / config.room.template_world
+    package_dir = os.path.dirname(os.path.abspath(__file__))
+    worlds_dir = os.path.normpath(os.path.join(package_dir, "..", "worlds"))
+    template_world_path = os.path.join(worlds_dir, config.room.template_world)
 
     print(f"Using worlds dir: {worlds_dir}")
     print(f"Using template: {template_world_path}")
 
     # check template world exists
-    if not template_world_path.exists():
+    if not os.path.exists(template_world_path):
         raise FileNotFoundError(f"Template world not found: {template_world_path}")
 
     placements = generate_layout(
         room=config.room,
         objects=config.objects,
-        count=args.count,
-        seed=args.seed,
+        count=count,
+        seed=seed,
     )
 
     include_blocks = [
@@ -68,17 +62,20 @@ def main() -> None:
         for i, p in enumerate(placements)
     ]
 
-    template_text = template_world_path.read_text(encoding="utf-8")
+    with open(template_world_path, "r", encoding="utf-8") as f:
+        template_text = f.read()
+
     generated_text = insert_includes_into_world(template_text, include_blocks)
 
-    output_path = worlds_dir / "generated_world.sdf"
-    output_path.write_text(generated_text, encoding="utf-8")
+    output_path = os.path.join(worlds_dir, "generated_world.sdf")
+
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write(generated_text)
+
 
     print(f"Generated world written to: {output_path}")
-    if args.seed is not None:
-        print(f"Seed: {args.seed}")
+    if seed is not None:
+        print(f"Seed: {seed}")
     print(f"Placed {len(placements)} objects.")
 
-
-if __name__ == "__main__":
-    main()
+    return output_path
