@@ -15,6 +15,7 @@ __pycache__/
 
 # VS Code workspace files
 .vscode/*
+!.vscode/tasks.json
 
 # VS Code generated databases
 *.vc.db
