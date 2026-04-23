@@ -7,7 +7,7 @@ import random
 from dataclasses import dataclass
 from typing import Iterable
 
-from assets import ObjectConfig, RoomConfig
+from .assets import ObjectConfig, RoomConfig
 
 
 @dataclass(frozen=True)

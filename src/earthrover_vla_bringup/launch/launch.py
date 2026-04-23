@@ -62,6 +62,7 @@ def generate_launch_description():
     ])
 
 def world_gen():
+    
     # TODO: Implement code to automatically set worldfile, choose 3 random objects and spawn them
     # Will return worldfile
     worldfile = 'empty_office_hallway.sdf'
