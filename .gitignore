@@ -24,3 +24,6 @@ __pycache__/
 
 # Local Codex workspace marker
 .codex
+# pixi environments
+.pixi/*
+!.pixi/config.toml

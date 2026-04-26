@@ -1,0 +1,16 @@
+[workspace]
+authors = ["lyamamoto <164627499+lyamatomato@users.noreply.github.com>"]
+channels = ["conda-forge", "robostack-jazzy"]
+name = "vla-autonomous-vehicles"
+platforms = ["osx-arm64"]
+version = "0.1.0"
+
+[tasks]
+
+[dependencies]
+ros-jazzy-desktop = ">=0.11.0,<0.12"
+colcon-common-extensions = ">=0.3.0,<0.4"
+ros-jazzy-xacro = ">=2.0.12,<3"
+ros-jazzy-ros-gz-sim = ">=1.0.19,<2"
+ros-jazzy-ros-gz-bridge = ">=1.0.19,<2"
+ros-jazzy-foxglove-bridge = ">=3.2.4,<4"
