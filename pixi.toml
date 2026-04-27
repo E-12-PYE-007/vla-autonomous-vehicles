@@ -14,3 +14,8 @@ ros-jazzy-xacro = ">=2.0.12,<3"
 ros-jazzy-ros-gz-sim = ">=1.0.19,<2"
 ros-jazzy-ros-gz-bridge = ">=1.0.19,<2"
 ros-jazzy-foxglove-bridge = ">=3.2.4,<4"
+opencv = ">=4.12.0,<5"
+ros-jazzy-cv-bridge = ">=4.1.0,<5"
+
+[pypi-dependencies]
+eclipse-zenoh = ">=1.9.0, <2"
