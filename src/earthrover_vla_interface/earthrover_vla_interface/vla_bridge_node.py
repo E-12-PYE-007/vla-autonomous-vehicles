@@ -26,6 +26,16 @@ class VLABridgeNode(Node):
         
         self.z_session = z_session
 
+        # --- Testing only ----
+        self.test_sent = False
+        self.test_past_path = "src/earthrover_vla_interface/earthrover_vla_interface/past.png"
+        self.test_curr_path = "src/earthrover_vla_interface/earthrover_vla_interface/cur.png"
+        self.test_instruction = "move toward blue trash bin"
+
+
+        self.test_timer = self.create_timer(1.0, self.publish_test_once)
+        # ---------------------
+
         self.img_publisher = self.z_session.declare_publisher(
             '/camera/img_compressed',
             encoding=Encoding.IMAGE_JPEG
@@ -64,6 +74,42 @@ class VLABridgeNode(Node):
 
         self.curr_img = None
         self.prev_img = None
+    
+    # --- Testing only ---
+
+    def encode_jpg_bytes(self, path):
+        img = cv2.imread(path)
+        if img is None:
+            self.get_logger().error(f"Failed to read image: {path}")
+            return None
+        ok, enc = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 80])
+        if not ok:
+            self.get_logger().error(f"Failed to encode image: {path}")
+            return None
+        return enc.tobytes()
+
+    def publish_test_once(self):
+        if self.test_sent:
+            return
+
+        past = self.encode_jpg_bytes(self.test_past_path)
+        curr = self.encode_jpg_bytes(self.test_curr_path)
+        if past is None or curr is None:
+            return
+
+        payload = {
+            "past_img": past.decode("latin-1"),
+            "curr_img": curr.decode("latin-1"),
+        }
+        self.img_publisher.put(json.dumps(payload).encode("utf-8"))
+        self.get_logger().info("Published test image pair")
+
+        self.inst_publisher.put(self.test_instruction.encode("utf-8"))
+        self.get_logger().info(f"Published test instruction: {self.test_instruction}")
+
+        self.test_sent = True
+
+    # -------------------
 
     def vla_cmd_callback(self, msg):
         time_cmd_sent, lin_x, ang_z = struct.unpack('ddd', msg.payload.to_bytes())
