@@ -31,6 +31,10 @@ class VLABridgeNode(Node):
             encoding=Encoding.IMAGE_JPEG
         )
 
+        self.inst_publisher = self.z_session.declare_publisher(
+            '/robot/instruction',
+        )
+
         self.cmd_publisher = self.create_publisher(
             TwistStamped,
             '/cmd_vel',
