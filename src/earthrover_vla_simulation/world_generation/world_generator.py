@@ -6,8 +6,12 @@ from __future__ import annotations
 import os
 import re
 
+from ament_index_python.packages import get_package_share_directory
 from .assets import load_world_config
 from .layout import generate_layout, Placement
+import time
+import random
+import glob
 
 
 def sanitize_name(name: str) -> str:
@@ -34,17 +38,30 @@ def insert_includes_into_world(world_text: str, include_blocks: list[str]) -> st
     return world_text[:idx] + insert_text + world_text[idx:]
 
 
-def generate_world_file(config_path, count, seed):
+# Accepts seed, randomly generates object count,
+# selects yaml file that defines the world template to generate from
+def generate_world_file():
+    # Define relevant directories
+    pkg_dir = get_package_share_directory('earthrover_vla_simulation')
+    worlds_dir = os.path.join(pkg_dir, 'worlds')
+    templates_dir=os.path.join(worlds_dir, 'templates')
+    gen_configs_dir = os.path.join(worlds_dir,'generation_configs')
+    log_path = os.path.join(worlds_dir, 'autogen_log.txt')
+    
+    # Set randomiser seed
+    seed = int(time.time()*1000) #Generates seed from current time to ms resolution
+    rng = random.Random(seed)
 
+    # Randomly select a config .yaml file to define the world template
+    avail_configs = sorted(glob.glob(os.path.join(gen_configs_dir,"*.yaml")))
+    if not avail_configs:                                                                                                    
+        raise RuntimeError(f"No config files found in {gen_configs_dir}")
+    config_path = rng.choice(avail_configs)
     config = load_world_config(config_path)
+    template_world_path = os.path.join(templates_dir ,config.room.template_world)
 
-    # create path to world template
-    package_dir = os.path.dirname(os.path.abspath(__file__))
-    worlds_dir = os.path.normpath(os.path.join(package_dir, "..", "worlds"))
-    template_world_path = os.path.join(worlds_dir, config.room.template_world)
-
-    print(f"Using worlds dir: {worlds_dir}")
-    print(f"Using template: {template_world_path}")
+    # Randomise number of objects to spawn
+    obj_count = rng.randint(3,5)
 
     # check template world exists
     if not os.path.exists(template_world_path):
@@ -53,7 +70,7 @@ def generate_world_file(config_path, count, seed):
     placements = generate_layout(
         room=config.room,
         objects=config.objects,
-        count=count,
+        count=obj_count,
         seed=seed,
     )
 
@@ -66,16 +83,14 @@ def generate_world_file(config_path, count, seed):
         template_text = f.read()
 
     generated_text = insert_includes_into_world(template_text, include_blocks)
+    generated_text = re.sub(r"<world name='[^']*'>", "<world name='generated_world'>", generated_text, count=1)
 
-    output_path = os.path.join(worlds_dir, "generated_world.sdf")
+    output_path = os.path.join(templates_dir, "generated_world.sdf")
 
     with open(output_path, "w", encoding="utf-8") as f:
         f.write(generated_text)
 
+    with open(log_path, 'a') as f:                                                                                         
+        f.write(f"{time.strftime("%Y-%m-%d %H:%M:%S")} | seed={seed} | config={os.path.basename(config_path)} | objects={obj_count}\n")
 
-    print(f"Generated world written to: {output_path}")
-    if seed is not None:
-        print(f"Seed: {seed}")
-    print(f"Placed {len(placements)} objects.")
-
-    return output_path
+    return "generated_world.sdf"

@@ -113,6 +113,9 @@ def collides_with_any(candidate: Placement, placed: list[Placement]) -> bool:
             return True
     return False
 
+def valid_spawn_clearance(placement: Placement, clearance: float) -> bool:                                                  
+    dist = math.sqrt(placement.x**2 + placement.y**2)
+    return dist > clearance + max(placement.size_x, placement.size_y) / 2  
 
 def sample_candidate(room: RoomConfig, obj: ObjectConfig, rng: random.Random) -> Placement:
     x = rng.uniform(room.xmin, room.xmax)
@@ -149,6 +152,8 @@ def generate_layout(
             candidate = sample_candidate(room, obj, rng)
 
             if not fits_in_room(room, candidate):
+                continue
+            if not valid_spawn_clearance(candidate,room.spawn_clearance):
                 continue
             if collides_with_any(candidate, placed):
                 continue

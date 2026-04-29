@@ -2,7 +2,7 @@
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument, OpaqueFunction
+from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument, OpaqueFunction, SetEnvironmentVariable
 from launch.launch_description_sources  import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
@@ -29,7 +29,7 @@ def launch_with_custom_world(context):
     pathModelFile = os.path.join(get_package_share_directory(simulation_package), modelFileRealtivePath)
     
     #For custom world file relative path
-    worldFileRelativePath = f'worlds/{worldfile}'
+    worldFileRelativePath = f'worlds/templates/{worldfile}'
 
     # for custom world model
     pathWorldFile = os.path.join(get_package_share_directory(simulation_package),worldFileRelativePath)
@@ -97,6 +97,11 @@ def launch_with_custom_world(context):
 
 def generate_launch_description():
     return LaunchDescription([
+
+        SetEnvironmentVariable(
+            'GZ_SIM_RESOURCE_PATH',
+            os.path.join(get_package_share_directory('earthrover_vla_simulation'), 'worlds', 'custom_worlds', 'local_models')
+        ),
 
         DeclareLaunchArgument(
             'worldfile',
