@@ -18,6 +18,7 @@ class RoomConfig:
     ymin: float
     ymax: float
     wall_margin: float = 0.0
+    spawn_clearance: float = 0.5
 
 
 @dataclass(frozen=True)
@@ -76,6 +77,8 @@ def load_world_config(config_path: str | Path) -> WorldConfig:
         ymin=float(_require(regions, "ymin")),
         ymax=float(_require(regions, "ymax")),
         wall_margin=float(room_raw.get("wall_margin", 0.0)),
+        spawn_clearance=float(room_raw.get("spawn_clearance",1.0))
+        
     )
 
     # validate room min and maxes

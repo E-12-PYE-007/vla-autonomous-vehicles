@@ -1,0 +1,57 @@
+room:
+  name: "office_square"
+  template_world: "empty_office_square.sdf" #Filename within templates dir
+  # Bounding region of the world
+  regions:
+    xmin: -2.5
+    xmax:  2.5
+    ymin: -2.5
+    ymax:  2.5
+
+# Describes the valid objects that are able to be placed in the scene
+objects:
+  - name: "Office Desk"
+    uri: "model://Office Desk"
+    size: [2.2, 0.85]
+    min_spacing: 0.15
+
+  - name: "Office Chair"
+    uri: "model://Office Chair"
+    size: [0.7, 0.7]
+    min_spacing: 0.1
+
+  - name: "Sofa"
+    uri: "model://Sofa"
+    size: [2.1, 0.95]
+    min_spacing: 0.2
+
+  - name: "CoffeeTable"                                                                                                  
+    uri: "model://CoffeeTable"
+    size: [0.73, 0.73]                                                                                                   
+    min_spacing: 0.1
+                                                                                                                           
+  - name: "carboard box"
+    uri: "model://carboard box"                                                                                          
+    size: [0.50, 0.40]
+    min_spacing: 0.05
+    z: 0.15                                                                                                              
+  
+  - name: "ElectronicsRecycling"                                                                                         
+    uri: "model://ElectronicsRecycling"
+    size: [0.69, 0.53]
+    min_spacing: 0.05                                                                                                    
+  
+  - name: "ExtinguisherCabinet"                                                                                         
+    uri: "model://ExtinguisherCabinet"
+    size: [0.21, 0.31]
+    min_spacing: 0.05
+                                                                                                                          
+  - name: "LitterBin"
+    uri: "model://LitterBin"                                                                                             
+    size: [0.45, 0.45]
+    min_spacing: 0.05
+
+  - name: "MetalCabinet"                                                                                                 
+    uri: "model://MetalCabinet"
+    size: [0.81, 0.45]                                                                                                   
+    min_spacing: 0.1
