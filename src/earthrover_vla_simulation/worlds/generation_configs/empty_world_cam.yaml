@@ -1,12 +1,12 @@
 room:
-  name: "office_square"
-  template_world: "empty_office_square.sdf" #Filename within templates dir
+  name: "empty_world_cam.sdf"
+  template_world: "empty_world_cam.sdf" #Filename within templates dir
   # Bounding region of the world
   regions:
-    xmin: -2.5
-    xmax:  2.5
-    ymin: -2.5
-    ymax:  2.5
+    xmin: -5.0
+    xmax:  5.0
+    ymin: -5.0
+    ymax:  5.0
 
 # Describes the valid objects that are able to be placed in the scene
 objects:
