@@ -1,0 +1,7 @@
+Place the Jetson action-head checkpoint here:
+
+shead--750000_checkpoint.pt
+
+Expected final path on the Jetson:
+
+~/jetson_upload_bundle/external_runtime/AsyncVLA_release/shead--750000_checkpoint.pt

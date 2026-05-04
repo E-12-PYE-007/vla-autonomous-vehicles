@@ -1,3 +1,0 @@
-std_msgs/Header header
-sensor_msgs/Image current_image
-sensor_msgs/Image delta_image
