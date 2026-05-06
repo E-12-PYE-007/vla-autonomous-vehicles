@@ -5,46 +5,58 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, LogInfo, OpaqueFunction
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
-
+from world_generation.world_generator import generate_world_file
 
 def launch_by_mode(context):
-    hardware = LaunchConfiguration('hardware').perform(context).lower()
+    mode = LaunchConfiguration('mode').perform(context).lower()
+    worldfile = LaunchConfiguration('worldfile').perform(context)
 
-    if hardware in ('false', '0', 'no'):
+    if mode in ('sim', 'sim-auto-gen'):
         simulation_launch = os.path.join(
             get_package_share_directory('earthrover_vla_simulation'),
             'launch',
             'sim.launch.py',
         )
+        #Placeholder branch to generate sdf file. Will set worldfile to the newly generated file.
+        if mode == 'sim-auto-gen':
+            worldfile=generate_world_file()
 
         return [
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(simulation_launch),
+                launch_arguments={
+                    'worldfile': worldfile,
+                }.items(),
             ),
         ]
 
-    if hardware in ('true', '1', 'yes'):
+    if mode == 'hardware':
         return [
             LogInfo(msg="TODO: hardware bringup isn't implemented yet."),
         ]
 
     return [
         LogInfo(
-            msg=(
-                "Invalid value for 'hardware': '"
-                + hardware
-                + "'. Use true or false."
-            )
-        ),
+            msg= "Invalid mode:"
+            + mode
+            +"Use hardware, sim, or sim-auto-gen"
+        )
     ]
-
 
 def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument(
-            'hardware',
-            default_value='false',
-            description='Set to true to request hardware bringup. Defaults to sim.',
+            'mode',
+            default_value='sim',
+            choices = ['hardware', 'sim', 'sim-auto-gen'],
+            description='Launch mode: hardware, sim or auto-gen',
         ),
+
+        DeclareLaunchArgument(
+            'worldfile',
+            default_value = 'empty_world_cam.sdf',
+            description = 'World file to use when simulating. Path relative to worlds directory. Defaults to empty_world_cam.sdf. Note world name must match path name.',
+        ),
+
         OpaqueFunction(function=launch_by_mode),
     ])
