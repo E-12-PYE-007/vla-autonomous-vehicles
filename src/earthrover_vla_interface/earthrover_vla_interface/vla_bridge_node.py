@@ -15,6 +15,11 @@ import json
 
 import numpy as np
 
+# --- Testing only ---
+from ament_index_python.packages import get_package_share_directory
+from pathlib import Path
+# --------------------
+
 
 class VLABridgeNode(Node):
     def __init__(self, z_session):
@@ -27,22 +32,28 @@ class VLABridgeNode(Node):
         self.z_session = z_session
 
         # --- Testing only ----
-        self.test_sent = False
-        self.test_past_path = "src/earthrover_vla_interface/earthrover_vla_interface/past.png"
-        self.test_curr_path = "src/earthrover_vla_interface/earthrover_vla_interface/cur.png"
+        share_dir = Path(get_package_share_directory("earthrover_vla_interface"))
+        self.test_past_path = str(share_dir / "past.png")
+        self.test_curr_path = str(share_dir / "cur.png")
         self.test_instruction = "move toward blue trash bin"
 
-
-        self.test_timer = self.create_timer(1.0, self.publish_test_once)
+        self.test_done = False
+        self.test_tries = 0
+        self.test_max_tries = 500  # e.g. 30 seconds at 1Hz
+        self.test_timer = self.create_timer(1.0, self.publish_test_retry)
+        self.test_timer2 = self.create_timer(1.0, self.publish_test_retry2)
         # ---------------------
 
-        self.img_publisher = self.z_session.declare_publisher(
-            '/camera/img_compressed',
-            encoding=Encoding.IMAGE_JPEG
+        self.img_past_publisher = self.z_session.declare_publisher(
+            'camera/img_compressed_past',
+        )
+
+        self.img_curr_publisher = self.z_session.declare_publisher(
+            'camera/img_compressed_curr',
         )
 
         self.inst_publisher = self.z_session.declare_publisher(
-            '/robot/instruction',
+            'robot/instruction',
         )
 
         self.cmd_publisher = self.create_publisher(
@@ -54,7 +65,7 @@ class VLABridgeNode(Node):
         # TODO: Subscribe to hidden action tokens, publish to action head
 
         self.vla_cmd_subscriber = self.z_session.declare_subscriber(
-            "/vla/cmd_vel",
+            "vla/cmd_vel",
             self.vla_cmd_callback
         )
 
@@ -76,7 +87,6 @@ class VLABridgeNode(Node):
         self.prev_img = None
     
     # --- Testing only ---
-
     def encode_jpg_bytes(self, path):
         img = cv2.imread(path)
         if img is None:
@@ -88,26 +98,52 @@ class VLABridgeNode(Node):
             return None
         return enc.tobytes()
 
-    def publish_test_once(self):
-        if self.test_sent:
+    def publish_test_retry(self):
+        if self.test_done:
+            self.get_logger().warn("test_done is True, skipping!") 
+            return
+
+        if self.test_tries >= self.test_max_tries:
+            self.get_logger().warn("Test publish timed out; stopping retries.")
+            self.test_done = True
+            self.test_timer.cancel()
             return
 
         past = self.encode_jpg_bytes(self.test_past_path)
-        curr = self.encode_jpg_bytes(self.test_curr_path)
-        if past is None or curr is None:
+        if past is None:
             return
 
         payload = {
             "past_img": past.decode("latin-1"),
+        }
+        self.img_past_publisher.put(json.dumps(payload).encode("utf-8"))
+        self.inst_publisher.put(self.test_instruction.encode("utf-8"))
+
+        self.test_tries += 1
+        self.get_logger().info(f"Published test pair+instruction (try {self.test_tries})")
+
+    def publish_test_retry2(self):
+        if self.test_done:
+            self.get_logger().warn("test_done is True, skipping!") 
+            return
+        
+        if self.test_tries >= self.test_max_tries:
+            self.get_logger().warn("Test publish timed out; stopping retries.")
+            self.test_done = True
+            self.test_timer2.cancel()
+            return
+
+        curr = self.encode_jpg_bytes(self.test_curr_path)
+        if curr is None:
+            return
+
+        payload = {
             "curr_img": curr.decode("latin-1"),
         }
-        self.img_publisher.put(json.dumps(payload).encode("utf-8"))
-        self.get_logger().info("Published test image pair")
+        self.img_curr_publisher.put(json.dumps(payload).encode("utf-8"))
 
-        self.inst_publisher.put(self.test_instruction.encode("utf-8"))
-        self.get_logger().info(f"Published test instruction: {self.test_instruction}")
-
-        self.test_sent = True
+        self.test_tries += 1
+        self.get_logger().info(f"Published test pair+instruction (try {self.test_tries})")
 
     # -------------------
 
@@ -128,7 +164,14 @@ class VLABridgeNode(Node):
         cmd_msg.twist.angular.z = ang_z
 
         self.cmd_publisher.publish(cmd_msg)
-        self.get_logger().info(f"Cmd send from VLA. lin_x: {lin_x:.2f} | ang_z: {ang_z:.3f}")
+
+        # Test
+        # if not self.test_done:
+        #     self.test_done = True
+        #     self.test_timer.cancel()
+        #     self.get_logger().info("Received vla/cmd_vel; stopping test retries.")
+        # ---
+        self.get_logger().info(f"Cmd sent from VLA. lin_x: {lin_x:.2f} | ang_z: {ang_z:.3f}")
 
     def process_img(self, img):
         height, width = img.shape[:2]
@@ -191,7 +234,11 @@ class VLABridgeNode(Node):
 def main(args=None):
     rclpy.init(args=args)
 
-    with zenoh.open() as z_session:
+    z_conf = zenoh.Config()
+    z_conf.insert_json5("mode", '"client"')
+    z_conf.insert_json5("connect/endpoints", '["tcp/127.0.0.1:7447"]')
+    z_conf.insert_json5("scouting/multicast/enabled", "false")
+    with zenoh.open(z_conf) as z_session:
         vla_bridge_node = VLABridgeNode(z_session)
         rclpy.spin(vla_bridge_node)
 
