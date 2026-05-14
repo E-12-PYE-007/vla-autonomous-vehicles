@@ -40,12 +40,12 @@ class VLABridgeNode(Node):
         self.test_done = False
         self.test_tries = 0
         self.test_max_tries = 500  # e.g. 30 seconds at 1Hz
-        self.test_timer = self.create_timer(1.0, self.publish_test_retry)
-        self.test_timer2 = self.create_timer(1.0, self.publish_test_retry2)
+        # self.test_timer = self.create_timer(1.0, self.publish_test_retry)
+        # self.test_timer2 = self.create_timer(1.0, self.publish_test_retry2)
         # ---------------------
 
-        self.img_past_publisher = self.z_session.declare_publisher(
-            'camera/img_compressed_past',
+        self.img_publisher = self.z_session.declare_publisher(
+            'camera/img_compressed',
         )
 
         self.img_curr_publisher = self.z_session.declare_publisher(
@@ -87,6 +87,7 @@ class VLABridgeNode(Node):
         self.prev_img = None
     
     # --- Testing only ---
+    @staticmethod
     def encode_jpg_bytes(self, path):
         img = cv2.imread(path)
         if img is None:
@@ -112,11 +113,15 @@ class VLABridgeNode(Node):
         past = self.encode_jpg_bytes(self.test_past_path)
         if past is None:
             return
+        curr = self.encode_jpg_bytes(self.test_curr_path)
+        if curr is None:
+            return
 
         payload = {
             "past_img": past.decode("latin-1"),
+            "curr_img": curr.decode("latin-1"),
         }
-        self.img_past_publisher.put(json.dumps(payload).encode("utf-8"))
+        self.img_publisher.put(json.dumps(payload).encode("utf-8"))
         self.inst_publisher.put(self.test_instruction.encode("utf-8"))
 
         self.test_tries += 1
@@ -155,7 +160,6 @@ class VLABridgeNode(Node):
         # Hardware: local NTP time
         # Sim: reads Gazebo time
         # TODO: Confirm latency
-        curr_time = self.get_clock().now()
 
         cmd_msg = TwistStamped()
         cmd_msg.header.stamp = time_cmd.to_msg()
@@ -173,7 +177,8 @@ class VLABridgeNode(Node):
         # ---
         self.get_logger().info(f"Cmd sent from VLA. lin_x: {lin_x:.2f} | ang_z: {ang_z:.3f}")
 
-    def process_img(self, img):
+    @staticmethod
+    def process_img(img):
         height, width = img.shape[:2]
         min_dim = min(height, width)
         start_x = (width - min_dim) // 2
@@ -185,12 +190,11 @@ class VLABridgeNode(Node):
         return cv2.resize(square_img, (224, 224), interpolation=cv2.INTER_LINEAR)
 
     def sim_img_callback(self, msg):
+        # /cam publishes images at 10Hz
+        # every 0.1s, we keep updating current image and previous image to be fed into vla and action head
         img = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
 
         img_resized = self.process_img(img)
-
-        # TODO: Must resize image so it is roughly square, test the camera to see what resize would be good
-        # img_resized = cv2.resize(img, (224, 224))
 
         # TODO: Include times - taking into account clock synchronisation
         

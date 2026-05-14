@@ -42,7 +42,7 @@ def launch_with_custom_world(context):
     gazeboLaunch = IncludeLaunchDescription(
         gazebo_rosPackageLaunch,
         launch_arguments={
-            'gz_args': f'-r -v 4 {pathWorldFile}',
+            'gz_args': f'-r -s -v 4 --headless-rendering {pathWorldFile}',
             'on_exit_shutdown': 'true'
         }.items()
     )
