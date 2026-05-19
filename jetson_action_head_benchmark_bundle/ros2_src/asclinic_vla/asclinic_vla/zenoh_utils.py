@@ -13,7 +13,7 @@ def load_zenoh():
     return zenoh
 
 
-def open_zenoh_session(connect_endpoints=None, listen_endpoints=None):
+def open_zenoh_session(connect_endpoints=None, listen_endpoints=None, mode='client', disable_multicast=True):
     """Create a Zenoh session from launch/config endpoint lists.
 
     connect_endpoints are remote routers/peers this process should dial.
@@ -25,6 +25,10 @@ def open_zenoh_session(connect_endpoints=None, listen_endpoints=None):
     connect_endpoints = list(connect_endpoints or [])
     listen_endpoints = list(listen_endpoints or [])
 
+    if mode:
+        config.insert_json5('mode', json.dumps(mode))
+    if disable_multicast:
+        config.insert_json5('scouting/multicast/enabled', 'false')
     if connect_endpoints:
         config.insert_json5('connect/endpoints', json.dumps(connect_endpoints))
     if listen_endpoints:

@@ -96,11 +96,15 @@ def launch_with_custom_world(context):
 
 
 def generate_launch_description():
+    simulation_share = get_package_share_directory('earthrover_vla_simulation')
+    worlds_dir = os.path.join(simulation_share, 'worlds')
+    local_models_dir = os.path.join(worlds_dir, 'custom_worlds', 'local_models')
+
     return LaunchDescription([
 
         SetEnvironmentVariable(
             'GZ_SIM_RESOURCE_PATH',
-            os.path.join(get_package_share_directory('earthrover_vla_simulation'), 'worlds', 'custom_worlds', 'local_models')
+            os.pathsep.join([worlds_dir, local_models_dir])
         ),
 
         DeclareLaunchArgument(

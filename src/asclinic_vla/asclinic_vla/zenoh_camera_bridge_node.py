@@ -15,6 +15,7 @@ import cv2
 import numpy as np
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import Image
 
 from asclinic_vla.zenoh_utils import open_zenoh_session
@@ -53,7 +54,7 @@ class ZenohCameraBridgeNode(Node):
             Image,
             self.get_parameter('image_topic').value,
             self.image_callback,
-            10,
+            qos_profile_sensor_data,
         )
         self.get_logger().info(f'Bridging ROS camera frames to Zenoh key {self.zenoh_key}')
 

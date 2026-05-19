@@ -31,11 +31,15 @@ class ZenohCmdVelBridgeNode(Node):
         self.declare_parameter('zenoh_connect_endpoints', ['tcp/127.0.0.1:7447'])
         self.declare_parameter('zenoh_listen_endpoints', [])
         self.declare_parameter('wheel_base', 0.22)
+        self.declare_parameter('linear_multiplier', 1.0)
+        self.declare_parameter('angular_multiplier', 1.0)
         self.declare_parameter('command_timeout_sec', 0.75)
         self.declare_parameter('timeout_check_rate_hz', 10.0)
 
         self.zenoh_key = self.get_parameter('zenoh_cmd_vel_key').value
         self.wheel_base = float(self.get_parameter('wheel_base').value)
+        self.linear_multiplier = float(self.get_parameter('linear_multiplier').value)
+        self.angular_multiplier = float(self.get_parameter('angular_multiplier').value)
         self.command_timeout_sec = float(self.get_parameter('command_timeout_sec').value)
         self.last_command_time = None
         self.seq_num = 1
@@ -88,6 +92,8 @@ class ZenohCmdVelBridgeNode(Node):
             self.get_logger().warn(f'Failed to parse Zenoh cmd_vel payload: {exc}')
             return
 
+        linear_x *= self.linear_multiplier
+        angular_z *= self.angular_multiplier
         left = linear_x - 0.5 * self.wheel_base * angular_z
         right = linear_x + 0.5 * self.wheel_base * angular_z
         with self.lock:

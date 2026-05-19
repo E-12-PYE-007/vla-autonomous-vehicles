@@ -24,6 +24,8 @@ class ZenohInstructionBridgeNode(Node):
 
         self.declare_parameter('goal_topic', '/asyncvla/goal')
         self.declare_parameter('zenoh_goal_key', 'robot/goal')
+        self.declare_parameter('zenoh_legacy_instruction_key', 'robot/instruction')
+        self.declare_parameter('publish_legacy_text_instruction', True)
         self.declare_parameter('zenoh_connect_endpoints', ['tcp/127.0.0.1:7447'])
         self.declare_parameter('zenoh_listen_endpoints', [])
         self.declare_parameter('republish_duplicates', False)
@@ -31,6 +33,10 @@ class ZenohInstructionBridgeNode(Node):
         self.declare_parameter('jpeg_quality', 90)
 
         self.goal_key = self.get_parameter('zenoh_goal_key').value
+        self.legacy_instruction_key = self.get_parameter('zenoh_legacy_instruction_key').value
+        self.publish_legacy_text_instruction = bool(
+            self.get_parameter('publish_legacy_text_instruction').value
+        )
         self.republish_duplicates = bool(self.get_parameter('republish_duplicates').value)
         self.image_goal_fallback_text = self.get_parameter('image_goal_fallback_text').value
         self.jpeg_quality = int(self.get_parameter('jpeg_quality').value)
@@ -41,6 +47,11 @@ class ZenohInstructionBridgeNode(Node):
             self.get_parameter('zenoh_listen_endpoints').value,
         )
         self.goal_publisher = self.zenoh_session.declare_publisher(self.goal_key)
+        self.legacy_instruction_publisher = None
+        if self.publish_legacy_text_instruction and self.legacy_instruction_key:
+            self.legacy_instruction_publisher = self.zenoh_session.declare_publisher(
+                self.legacy_instruction_key
+            )
 
         self.create_subscription(
             GoalSpec,
@@ -115,6 +126,10 @@ class ZenohInstructionBridgeNode(Node):
             return
 
         self.goal_publisher.put(payload_json.encode('utf-8'))
+        if self.legacy_instruction_publisher is not None and payload.get('goal_text'):
+            # Compatibility path for the provided AsyncVLA inference/run_vla.py,
+            # which subscribes to raw text on `robot/instruction`.
+            self.legacy_instruction_publisher.put(payload['goal_text'].encode('utf-8'))
         self.last_payload = payload_json
 
         self.get_logger().info(

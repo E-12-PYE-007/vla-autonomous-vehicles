@@ -38,6 +38,9 @@ zenoh_instruction_bridge:
     goal_topic: /asyncvla/goal
     # Single GoalSpec-compatible JSON payload for text or image goals.
     zenoh_goal_key: robot/goal
+    # Compatibility with the provided AsyncVLA inference/run_vla.py.
+    zenoh_legacy_instruction_key: robot/instruction
+    publish_legacy_text_instruction: true
     zenoh_connect_endpoints:
       - tcp/127.0.0.1:7447
     zenoh_listen_endpoints: []
