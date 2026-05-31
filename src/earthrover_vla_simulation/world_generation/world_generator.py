@@ -91,6 +91,6 @@ def generate_world_file():
         f.write(generated_text)
 
     with open(log_path, 'a') as f:                                                                                         
-        f.write(f"{time.strftime("%Y-%m-%d %H:%M:%S")} | seed={seed} | config={os.path.basename(config_path)} | objects={obj_count}\n")
+        f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} | seed={seed} | config={os.path.basename(config_path)} | objects={obj_count}\n")
 
     return "generated_world.sdf"

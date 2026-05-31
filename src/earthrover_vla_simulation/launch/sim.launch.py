@@ -42,7 +42,7 @@ def launch_with_custom_world(context):
     gazeboLaunch = IncludeLaunchDescription(
         gazebo_rosPackageLaunch,
         launch_arguments={
-            'gz_args': f'-r -s -v 4 --headless-rendering {pathWorldFile}',
+            'gz_args': f'-r -v 4 {pathWorldFile}',
             'on_exit_shutdown': 'true'
         }.items()
     )
@@ -53,7 +53,11 @@ def launch_with_custom_world(context):
         arguments=[
             '-world', world_name,
             '-name', robotXacroName,
-            '-topic', 'robot_description'
+            '-topic', 'robot_description',
+            '-x', '-1.2',
+            '-y', '0.6',
+            '-z', '0.1',
+            '-Y', '0.0',
         ],
         output = 'screen',
     )
