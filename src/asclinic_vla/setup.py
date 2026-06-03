@@ -39,6 +39,8 @@ setup(
             'zenoh_action_chunk_bridge = asclinic_vla.zenoh_action_chunk_bridge_node:main',
             'split_action_head = asclinic_vla.split_action_head_runner:main',
             'benchmark_action_head = asclinic_vla.benchmark_action_head:main',
+            'vla_performance_sim = asclinic_vla.vla_performance_sim_node:main',
+            'vla_performance_hardware = asclinic_vla.vla_performance_hardware_node:main',
             'wheel_pid_controller = asclinic_vla.wheel_pid_controller_node:main',
             'roboclaw_for_motors = asclinic_vla.roboclaw_for_motors_node:main',
         ],

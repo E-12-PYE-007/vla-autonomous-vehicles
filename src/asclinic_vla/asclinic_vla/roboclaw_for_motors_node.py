@@ -83,7 +83,10 @@ class RoboclawForMotorsNode(Node):
         self.roboclaw = Basicmicro(port, baudrate)
         self.connected = bool(self.roboclaw.Open())
         if not self.connected:
-            raise RuntimeError(f'Failed to open Roboclaw on {port} at {baudrate}')
+            self.get_logger().warn(
+                f'Failed to open Roboclaw on {port} at {baudrate}; motor commands will be ignored'
+            )
+            return
         self.get_logger().info(f'Connected to Roboclaw on {port}')
 
     @staticmethod
@@ -116,7 +119,12 @@ class RoboclawForMotorsNode(Node):
         from the same Roboclaw transaction. It also converts unsigned 32-bit
         values into signed integers before computing deltas.
         """
-        result = self.roboclaw.GetEncoders(self.address)
+        try:
+            result = self.roboclaw.GetEncoders(self.address)
+        except Exception as exc:
+            self.get_logger().warn(f'Roboclaw encoder read failed: {exc}')
+            return None
+
         if not result[0]:
             return None
 
@@ -154,7 +162,12 @@ class RoboclawForMotorsNode(Node):
     def destroy_node(self):
         """Stop both motors before shutting down the node."""
         if self.connected:
-            self.roboclaw.DutyM1M2(self.address, 0, 0)
+            try:
+                self.roboclaw.DutyM1M2(self.address, 0, 0)
+                if hasattr(self.roboclaw, 'close'):
+                    self.roboclaw.close()
+            except Exception:
+                pass
         super().destroy_node()
 
 

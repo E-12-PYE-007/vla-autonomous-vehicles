@@ -17,11 +17,15 @@ import traceback
 from typing import Optional, Tuple
 
 import numpy as np
+import rclpy
 import torch
 import torchvision.transforms as transforms
 import torchvision.transforms.functional as TF
 import yaml
+from asclinic_vla_interfaces.msg import ActionChunk
+from geometry_msgs.msg import Pose2D
 from PIL import Image
+from rclpy.node import Node
 
 from asclinic_vla.zenoh_utils import open_zenoh_session
 
@@ -149,16 +153,44 @@ def define_model(cfg: ActionHeadConfig):
     return shead, device_id
 
 
+class RosActionChunkPublisher:
+    """Publishes action-head pose chunks directly into the local ROS graph."""
+
+    def __init__(self, action_topic):
+        self.node = Node('split_action_head_ros_publisher')
+        self.publisher = self.node.create_publisher(ActionChunk, action_topic, 10)
+        self.node.get_logger().info(f'Publishing local ROS ActionChunk on {action_topic}')
+
+    def publish(self, payload):
+        msg = ActionChunk()
+        msg.header.stamp = self.node.get_clock().now().to_msg()
+        msg.header.frame_id = payload.get('frame', 'robot')
+        msg.seq_num = int(payload['seq_num'])
+
+        for item in payload['relative_poses']:
+            pose = Pose2D()
+            pose.x = float(item[0])
+            pose.y = float(item[1])
+            pose.theta = float(item[2])
+            msg.relative_poses.append(pose)
+
+        self.publisher.publish(msg)
+
+    def destroy(self):
+        self.node.destroy_node()
+
+
 class ActionHeadZenohHandler:
     """Keeps latest Zenoh inputs and triggers action-head inference when ready."""
 
-    def __init__(self, shead, device_id, action_chunk_pub, metric_waypoint_spacing):
+    def __init__(self, shead, device_id, action_chunk_pub, ros_action_chunk_pub, metric_waypoint_spacing):
         self.shead = shead
         self.device_id = device_id
         self.curr_actions = None
         self.past_img = None
         self.curr_img = None
         self.action_chunk_pub = action_chunk_pub
+        self.ros_action_chunk_pub = ros_action_chunk_pub
         self.metric_waypoint_spacing = metric_waypoint_spacing
         self.seq_num = 1
 
@@ -211,7 +243,10 @@ class ActionHeadZenohHandler:
             'seq_num': self.seq_num,
             'relative_poses': relative_poses,
         }
-        self.action_chunk_pub.put(json.dumps(payload).encode('utf-8'))
+        if self.action_chunk_pub is not None:
+            self.action_chunk_pub.put(json.dumps(payload).encode('utf-8'))
+        if self.ros_action_chunk_pub is not None:
+            self.ros_action_chunk_pub.publish(payload)
         print(f'action_chunk #{self.seq_num} sent: {len(relative_poses)} poses', flush=True)
         self.seq_num += 1
 
@@ -228,6 +263,8 @@ def parse_args(argv):
     parser.add_argument('--actions-key', default='vla/actions')
     parser.add_argument('--camera-key', default='camera/img_compressed')
     parser.add_argument('--action-chunk-key', default='vla/action_chunk')
+    parser.add_argument('--ros-action-topic', default='', help='Also publish ActionChunk locally on this ROS topic.')
+    parser.add_argument('--disable-zenoh-action-chunk-publish', action='store_true')
     parser.add_argument('--metric-waypoint-spacing', type=float, default=0.1)
     parser.add_argument('--extra-python-path', action='append', default=[
         '../Learning-to-Drive-Anywhere-with-MBRA/train/',
@@ -240,11 +277,18 @@ def parse_args(argv):
 def main(argv=None):
     """Entry point used by `ros2 run asclinic_vla split_action_head -- ...`."""
     args = parse_args(sys.argv[1:] if argv is None else argv)
+    args.vla_path = os.path.expanduser(args.vla_path)
+    args.asyncvla_source = os.path.expanduser(args.asyncvla_source)
+    args.dataset_config = os.path.expanduser(args.dataset_config)
+
     if args.asyncvla_source and args.asyncvla_source not in sys.path:
         sys.path.append(args.asyncvla_source)
     for path in args.extra_python_path:
         # The AsyncVLA repo keeps prismatic/lerobot modules outside this ROS
         # package, so expose those source roots before importing Edge_adapter.
+        path = os.path.expanduser(path)
+        if path and not os.path.isabs(path):
+            path = os.path.normpath(os.path.join(args.asyncvla_source, path))
         if path and path not in sys.path:
             sys.path.append(path)
 
@@ -256,29 +300,44 @@ def main(argv=None):
     shead, device_id = define_model(cfg)
 
     connect_endpoints = args.connect or ['tcp/127.0.0.1:7447']
+    ros_action_chunk_pub = None
+    if args.ros_action_topic:
+        rclpy.init(args=None)
+        ros_action_chunk_pub = RosActionChunkPublisher(args.ros_action_topic)
+
     with open_zenoh_session(connect_endpoints, args.listen) as z_session:
         # The action head subscribes to camera/actions and publishes a relative
         # trajectory that the ROS odometry-aware tracker turns into wheel refs.
-        action_chunk_publisher = z_session.declare_publisher(args.action_chunk_key)
+        action_chunk_publisher = None
+        if not args.disable_zenoh_action_chunk_publish:
+            action_chunk_publisher = z_session.declare_publisher(args.action_chunk_key)
         handler = ActionHeadZenohHandler(
             shead,
             device_id,
             action_chunk_publisher,
+            ros_action_chunk_pub,
             args.metric_waypoint_spacing,
         )
         action_subscriber = z_session.declare_subscriber(args.actions_key, handler.action_callback)
         img_subscriber = z_session.declare_subscriber(args.camera_key, handler.img_callback)
         print(
             f'Action head running on {device_id}; '
-            f'actions={args.actions_key}, camera={args.camera_key}, action_chunk={args.action_chunk_key}',
+            f'actions={args.actions_key}, camera={args.camera_key}, '
+            f'zenoh_action_chunk={args.action_chunk_key if action_chunk_publisher else "disabled"}, '
+            f'ros_action_topic={args.ros_action_topic or "disabled"}',
             flush=True,
         )
         try:
             while True:
+                if ros_action_chunk_pub is not None:
+                    rclpy.spin_once(ros_action_chunk_pub.node, timeout_sec=0.0)
                 time.sleep(1)
         finally:
             del action_subscriber
             del img_subscriber
+            if ros_action_chunk_pub is not None:
+                ros_action_chunk_pub.destroy()
+                rclpy.shutdown()
 
 
 if __name__ == '__main__':

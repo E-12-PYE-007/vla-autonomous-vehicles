@@ -34,6 +34,7 @@ class WheelPIDControllerNode(Node):
         self.declare_parameter('ki_right', 5.0)
         self.declare_parameter('kd_right', 2.0)
         self.declare_parameter('ref_timeout_sec', 0.5)
+        self.declare_parameter('encoder_timeout_sec', 0.25)
         self.declare_parameter('wheel_speed_filter_alpha', 0.5)
         self.declare_parameter('motor_filter_alpha', 0.6)
 
@@ -47,6 +48,7 @@ class WheelPIDControllerNode(Node):
         self.ki_right = float(self.get_parameter('ki_right').value)
         self.kd_right = float(self.get_parameter('kd_right').value)
         self.ref_timeout_sec = float(self.get_parameter('ref_timeout_sec').value)
+        self.encoder_timeout_sec = float(self.get_parameter('encoder_timeout_sec').value)
         self.wheel_speed_filter_alpha = float(self.get_parameter('wheel_speed_filter_alpha').value)
         self.motor_filter_alpha = float(self.get_parameter('motor_filter_alpha').value)
 
@@ -61,6 +63,7 @@ class WheelPIDControllerNode(Node):
         self.prev_duty_left = 0.0
         self.prev_duty_right = 0.0
         self.last_ref_time = self.get_clock().now()
+        self.last_encoder_time = None
         self.seq_num = 1
 
         # The reference comes from either Zenoh cmd_vel bridge or direct action chunk
@@ -92,9 +95,15 @@ class WheelPIDControllerNode(Node):
 
     def encoder_callback(self, msg):
         """Convert encoder delta counts into filtered wheel speed measurements."""
+        now = self.get_clock().now()
+        encoder_dt = self.dt
+        if self.last_encoder_time is not None:
+            encoder_dt = max((now - self.last_encoder_time).nanoseconds / 1e9, 1e-6)
+        self.last_encoder_time = now
+
         distance_per_count = (2.0 * np.pi * self.wheel_radius) / self.counts_per_rev
-        raw_left = (float(msg.left) * distance_per_count) / self.dt
-        raw_right = (float(msg.right) * distance_per_count) / self.dt
+        raw_left = (float(msg.left) * distance_per_count) / encoder_dt
+        raw_right = (float(msg.right) * distance_per_count) / encoder_dt
         alpha = self.wheel_speed_filter_alpha
         self.v_left_meas = alpha * raw_left + (1.0 - alpha) * self.v_left_meas
         self.v_right_meas = alpha * raw_right + (1.0 - alpha) * self.v_right_meas
@@ -119,6 +128,16 @@ class WheelPIDControllerNode(Node):
         if age > self.ref_timeout_sec:
             # If high-level commands stop, clear references and integral memory so
             # the robot stops instead of continuing on stale accumulated error.
+            self.v_left_ref = 0.0
+            self.v_right_ref = 0.0
+            self.integral_left = 0.0
+            self.integral_right = 0.0
+
+        encoder_stale = (
+            self.last_encoder_time is None or
+            (self.get_clock().now() - self.last_encoder_time).nanoseconds / 1e9 > self.encoder_timeout_sec
+        )
+        if encoder_stale:
             self.v_left_ref = 0.0
             self.v_right_ref = 0.0
             self.integral_left = 0.0

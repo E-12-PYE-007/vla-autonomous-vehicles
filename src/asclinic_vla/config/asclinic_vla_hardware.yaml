@@ -10,11 +10,15 @@ goal_publisher:
 asclinic_camera_capture:
   ros__parameters:
     camera_device: 0
-    frame_width: 640
-    frame_height: 480
-    fps: 10.0
+    frame_width: 1920
+    frame_height: 1080
+    fps: 5.0
     image_topic: /cam
     show_preview: false
+    autofocus: false
+    focus: 0
+    buffer_size: 1
+    verbosity: 1
 
 vla_http_client:
   ros__parameters:
@@ -78,6 +82,7 @@ wheel_pid_controller:
     ki_right: 5.0
     kd_right: 2.0
     ref_timeout_sec: 0.5
+    encoder_timeout_sec: 0.25
     wheel_speed_filter_alpha: 0.5
     motor_filter_alpha: 0.6
 
