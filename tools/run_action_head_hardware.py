@@ -12,12 +12,14 @@ vla/action_chunk as /asyncvla/action_chunk.
 """
 
 import argparse
+import importlib.util
 import io
 import json
 import os
 import sys
 import time
 import traceback
+import types
 from typing import Optional
 
 import numpy as np
@@ -90,7 +92,7 @@ class ActionHeadConfig:
 
 
 def define_model(cfg):
-    from prismatic.models.small_head import Edge_adapter
+    Edge_adapter = load_edge_adapter()
 
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     if device.type != 'cuda':
@@ -128,6 +130,41 @@ def define_model(cfg):
 
     shead.to(torch.bfloat16).to(device=device).eval()
     return shead, device
+
+
+def load_edge_adapter():
+    """Load Edge_adapter without importing the full AsyncVLA training package.
+
+    A normal `from prismatic.models.small_head import Edge_adapter` import also
+    executes prismatic package initializers, which pull in RLDS/dlimp training
+    dependencies that are not needed for hardware inference. This direct file
+    load keeps the Jetson action-head venv small.
+    """
+    asyncvla_source = next((path for path in sys.path if os.path.exists(os.path.join(path, 'prismatic'))), None)
+    if asyncvla_source is None:
+        raise RuntimeError('AsyncVLA source path is not on PYTHONPATH/sys.path')
+
+    constants = types.ModuleType('prismatic.vla.constants')
+    constants.ACTION_DIM = 4
+    constants.ACTION_TOKEN_BEGIN_IDX = 0
+    constants.IGNORE_INDEX = -100
+    constants.NUM_ACTIONS_CHUNK = 8
+    constants.STOP_INDEX = 2
+
+    prismatic_pkg = types.ModuleType('prismatic')
+    prismatic_pkg.__path__ = [os.path.join(asyncvla_source, 'prismatic')]
+    vla_pkg = types.ModuleType('prismatic.vla')
+    vla_pkg.__path__ = [os.path.join(asyncvla_source, 'prismatic', 'vla')]
+
+    sys.modules.setdefault('prismatic', prismatic_pkg)
+    sys.modules.setdefault('prismatic.vla', vla_pkg)
+    sys.modules['prismatic.vla.constants'] = constants
+
+    small_head_path = os.path.join(asyncvla_source, 'prismatic', 'models', 'small_head.py')
+    spec = importlib.util.spec_from_file_location('asyncvla_small_head_runtime', small_head_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.Edge_adapter
 
 
 class ActionHeadHandler:
