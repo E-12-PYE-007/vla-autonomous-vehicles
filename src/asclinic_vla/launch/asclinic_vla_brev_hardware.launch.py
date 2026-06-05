@@ -15,6 +15,8 @@ def generate_launch_description():
     goal_image_path = LaunchConfiguration('goal_image_path')
     zenoh_connect_endpoint = LaunchConfiguration('zenoh_connect_endpoint')
     roboclaw_dry_run = LaunchConfiguration('roboclaw_dry_run')
+    roboclaw_usb_port = LaunchConfiguration('roboclaw_usb_port')
+    camera_device = LaunchConfiguration('camera_device')
     action_topic = LaunchConfiguration('action_topic')
     use_performance_monitor = LaunchConfiguration('use_performance_monitor')
     performance_output_dir = LaunchConfiguration('performance_output_dir')
@@ -27,6 +29,16 @@ def generate_launch_description():
     ])
 
     return LaunchDescription([
+        DeclareLaunchArgument(
+            'roboclaw_usb_port',
+            default_value='/dev/ttyACM0',
+            description='RoboClaw serial device.',
+        ),
+        DeclareLaunchArgument(
+            'camera_device',
+            default_value='0',
+            description='Camera device index, e.g. 0 for /dev/video0 or 1 for /dev/video1.',
+        ),
         DeclareLaunchArgument(
             'config_file',
             default_value=default_config,
@@ -102,7 +114,10 @@ def generate_launch_description():
             executable='asclinic_camera_capture',
             name='asclinic_camera_capture',
             output='screen',
-            parameters=[config_file],
+            parameters=[
+                config_file,
+                {'camera_device': camera_device},
+            ],
         ),
         Node(
             package='asclinic_vla',
@@ -168,7 +183,10 @@ def generate_launch_description():
             output='screen',
             parameters=[
                 config_file,
-                {'dry_run': roboclaw_dry_run},
+                {
+                    'dry_run': roboclaw_dry_run,
+                    'roboclaw_usb_port': roboclaw_usb_port,
+                },
             ],
         ),
         Node(

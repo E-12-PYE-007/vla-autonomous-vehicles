@@ -45,8 +45,8 @@ class VLAHardwarePerformanceMonitor(Node):
         self.declare_parameter('session_name', '')
         self.declare_parameter('summary_period_sec', 5.0)
         self.declare_parameter('use_zenoh', True)
-        self.declare_parameter('zenoh_connect_endpoints', ['tcp/127.0.0.1:7447'])
-        self.declare_parameter('zenoh_listen_endpoints', [])
+        self.declare_parameter('zenoh_connect_endpoints', 'tcp/127.0.0.1:7447')
+        self.declare_parameter('zenoh_listen_endpoints', '')
         self.declare_parameter('camera_zenoh_key', 'camera/img_compressed')
         self.declare_parameter('vla_actions_key', 'vla/actions')
         self.declare_parameter('cmd_vel_zenoh_key', 'vla/cmd_vel')
@@ -118,6 +118,15 @@ class VLAHardwarePerformanceMonitor(Node):
         return path
 
     def open_zenoh(self):
+        connect_endpoints = self.get_parameter('zenoh_connect_endpoints').value
+        listen_endpoints = self.get_parameter('zenoh_listen_endpoints').value
+
+        if isinstance(connect_endpoints, str):
+            connect_endpoints = [connect_endpoints] if connect_endpoints else []
+
+        if isinstance(listen_endpoints, str):
+            listen_endpoints = [listen_endpoints] if listen_endpoints else []
+
         self.zenoh_session = open_zenoh_session(
             self.get_parameter('zenoh_connect_endpoints').value,
             self.get_parameter('zenoh_listen_endpoints').value,

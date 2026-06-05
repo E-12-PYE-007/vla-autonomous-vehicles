@@ -26,8 +26,8 @@ class ZenohInstructionBridgeNode(Node):
         self.declare_parameter('zenoh_goal_key', 'robot/goal')
         self.declare_parameter('zenoh_legacy_instruction_key', 'robot/instruction')
         self.declare_parameter('publish_legacy_text_instruction', True)
-        self.declare_parameter('zenoh_connect_endpoints', ['tcp/127.0.0.1:7447'])
-        self.declare_parameter('zenoh_listen_endpoints', [])
+        self.declare_parameter('zenoh_connect_endpoints', 'tcp/127.0.0.1:7447')
+        self.declare_parameter('zenoh_listen_endpoints', '')
         self.declare_parameter('republish_duplicates', False)
         self.declare_parameter('image_goal_fallback_text', 'navigate to the goal image')
         self.declare_parameter('jpeg_quality', 90)
@@ -42,9 +42,18 @@ class ZenohInstructionBridgeNode(Node):
         self.jpeg_quality = int(self.get_parameter('jpeg_quality').value)
         self.last_payload = None
 
+        connect_endpoints = self.get_parameter('zenoh_connect_endpoints').value
+        listen_endpoints = self.get_parameter('zenoh_listen_endpoints').value
+
+        if isinstance(connect_endpoints, str):
+            connect_endpoints = [connect_endpoints] if connect_endpoints else []
+
+        if isinstance(listen_endpoints, str):
+            listen_endpoints = [listen_endpoints] if listen_endpoints else []
+
         self.zenoh_session = open_zenoh_session(
-            self.get_parameter('zenoh_connect_endpoints').value,
-            self.get_parameter('zenoh_listen_endpoints').value,
+            connect_endpoints,
+            listen_endpoints,
         )
         self.goal_publisher = self.zenoh_session.declare_publisher(self.goal_key)
         self.legacy_instruction_publisher = None

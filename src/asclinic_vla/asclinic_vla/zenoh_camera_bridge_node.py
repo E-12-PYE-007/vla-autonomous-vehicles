@@ -29,8 +29,8 @@ class ZenohCameraBridgeNode(Node):
         # so the same node can run against localhost, a Zenoh router, or the cloud.
         self.declare_parameter('image_topic', '/cam')
         self.declare_parameter('zenoh_camera_key', 'camera/img_compressed')
-        self.declare_parameter('zenoh_connect_endpoints', ['tcp/127.0.0.1:7447'])
-        self.declare_parameter('zenoh_listen_endpoints', [])
+        self.declare_parameter('zenoh_connect_endpoints', 'tcp/127.0.0.1:7447')
+        self.declare_parameter('zenoh_listen_endpoints', '')
         self.declare_parameter('jpeg_quality', 80)
         self.declare_parameter('publish_rate_hz', 5.0)
 
@@ -44,9 +44,18 @@ class ZenohCameraBridgeNode(Node):
 
         # Open the Zenoh session before subscribing so camera callbacks can publish
         # immediately once frames start arriving.
+        connect_endpoints = self.get_parameter('zenoh_connect_endpoints').value
+        listen_endpoints = self.get_parameter('zenoh_listen_endpoints').value
+
+        if isinstance(connect_endpoints, str):
+            connect_endpoints = [connect_endpoints] if connect_endpoints else []
+
+        if isinstance(listen_endpoints, str):
+            listen_endpoints = [listen_endpoints] if listen_endpoints else []
+
         self.zenoh_session = open_zenoh_session(
-            self.get_parameter('zenoh_connect_endpoints').value,
-            self.get_parameter('zenoh_listen_endpoints').value,
+            connect_endpoints,
+            listen_endpoints,
         )
         self.publisher = self.zenoh_session.declare_publisher(self.zenoh_key)
 

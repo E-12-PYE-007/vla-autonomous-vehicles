@@ -33,7 +33,7 @@ zenoh_camera_bridge:
     # Override this from launch with zenoh_connect_endpoint:=tcp/CLOUD_IP:7447.
     zenoh_connect_endpoints:
       - tcp/127.0.0.1:7447
-    zenoh_listen_endpoints: []
+    zenoh_listen_endpoints: ''
     jpeg_quality: 80
     publish_rate_hz: 5.0
 
@@ -47,7 +47,7 @@ zenoh_instruction_bridge:
     publish_legacy_text_instruction: true
     zenoh_connect_endpoints:
       - tcp/127.0.0.1:7447
-    zenoh_listen_endpoints: []
+    zenoh_listen_endpoints: ''
     republish_duplicates: false
     image_goal_fallback_text: navigate to the goal image
     jpeg_quality: 90
@@ -59,7 +59,7 @@ zenoh_action_chunk_bridge:
     zenoh_action_chunk_key: vla/action_chunk
     zenoh_connect_endpoints:
       - tcp/127.0.0.1:7447
-    zenoh_listen_endpoints: []
+    zenoh_listen_endpoints: ''
 
 encoder_odometry:
   ros__parameters:

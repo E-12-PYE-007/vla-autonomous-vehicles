@@ -160,6 +160,17 @@ def load_edge_adapter():
     sys.modules.setdefault('prismatic.vla', vla_pkg)
     sys.modules['prismatic.vla.constants'] = constants
 
+    # The public visualnav-transformer repo used on Jetson may not define this
+    # older AsyncVLA import name. Edge_adapter only uses MultiLayerDecoder_trans,
+    # but small_head.py imports all three names at module load time.
+    try:
+        from vint_train.models.vint import self_attention
+        if not hasattr(self_attention, 'MultiLayerDecoder_idcat'):
+            self_attention.MultiLayerDecoder_idcat = self_attention.MultiLayerDecoder_trans
+    except Exception:
+        pass
+
+
     small_head_path = os.path.join(asyncvla_source, 'prismatic', 'models', 'small_head.py')
     spec = importlib.util.spec_from_file_location('asyncvla_small_head_runtime', small_head_path)
     module = importlib.util.module_from_spec(spec)

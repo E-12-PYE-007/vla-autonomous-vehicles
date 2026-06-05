@@ -91,7 +91,7 @@ roboclaw_for_motors:
     duty_cycle_topic: set_motor_duty_cycle
     current_duty_cycle_topic: current_motor_duty_cycle
     encoder_counts_topic: encoder_counts
-    roboclaw_usb_port: /dev/ttyACM0
+    roboclaw_usb_port: /dev/ttyUSB0
     roboclaw_baudrate: 38400
     roboclaw_address: 128
     encoder_period_sec: 0.1
