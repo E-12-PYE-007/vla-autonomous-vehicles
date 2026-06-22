@@ -10,6 +10,7 @@ references for the ASClinic wheel PID controller.
 """
 
 import json
+import math
 import struct
 import threading
 
@@ -28,8 +29,8 @@ class ZenohCmdVelBridgeNode(Node):
         # left = v - L*w/2, right = v + L*w/2.
         self.declare_parameter('wheel_reference_topic', 'wheel_velocity_reference')
         self.declare_parameter('zenoh_cmd_vel_key', 'vla/cmd_vel')
-        self.declare_parameter('zenoh_connect_endpoints', ['tcp/127.0.0.1:7447'])
-        self.declare_parameter('zenoh_listen_endpoints', [])
+        self.declare_parameter('zenoh_connect_endpoints', 'tcp/127.0.0.1:7447')
+        self.declare_parameter('zenoh_listen_endpoints', '')
         self.declare_parameter('wheel_base', 0.22)
         self.declare_parameter('linear_multiplier', 1.0)
         self.declare_parameter('angular_multiplier', 1.0)
@@ -90,6 +91,12 @@ class ZenohCmdVelBridgeNode(Node):
             _, linear_x, angular_z = self.parse_cmd_vel(self.payload_bytes(msg))
         except Exception as exc:
             self.get_logger().warn(f'Failed to parse Zenoh cmd_vel payload: {exc}')
+            return
+
+        if not (math.isfinite(linear_x) and math.isfinite(angular_z)):
+            self.get_logger().warn(
+                f'Dropping NaN/inf cmd_vel (linear={linear_x}, angular={angular_z})'
+            )
             return
 
         linear_x *= self.linear_multiplier

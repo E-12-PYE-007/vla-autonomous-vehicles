@@ -65,7 +65,7 @@ def generate_launch_description():
             parameters=[{
                 'image_topic': '/cam',
                 'zenoh_camera_key': 'camera/img_compressed',
-                'zenoh_connect_endpoints': [zenoh_endpoint],
+                'zenoh_connect_endpoints': zenoh_endpoint,
             }],
         ),
         Node(
@@ -78,7 +78,7 @@ def generate_launch_description():
                 'zenoh_goal_key': 'robot/goal',
                 'zenoh_legacy_instruction_key': 'robot/instruction',
                 'publish_legacy_text_instruction': True,
-                'zenoh_connect_endpoints': [zenoh_endpoint],
+                'zenoh_connect_endpoints': zenoh_endpoint,
             }],
         ),
         TimerAction(
@@ -105,7 +105,7 @@ def generate_launch_description():
             parameters=[{
                 'zenoh_cmd_vel_key': 'vla/cmd_vel',
                 'wheel_reference_topic': 'wheel_velocity_reference',
-                'zenoh_connect_endpoints': [zenoh_endpoint],
+                'zenoh_connect_endpoints': zenoh_endpoint,
                 'linear_multiplier': linear_multiplier,
                 'angular_multiplier': angular_multiplier,
             }],
