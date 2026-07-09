@@ -19,6 +19,8 @@ import math
 import threading
 from collections import deque
 
+import matplotlib
+matplotlib.use('webagg')
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 
