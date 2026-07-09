@@ -27,6 +27,8 @@ class FakeActionChunkPublisherNode(Node):
         self.declare_parameter('step_distance', 0.12)
         self.declare_parameter('turn_per_step', 0.08)
         self.declare_parameter('pattern', 'straight')
+        self.declare_parameter('circle_radius', 1.5)
+        self.declare_parameter('straight_length', 4.0)
 
         self.action_topic = self.get_parameter('action_topic').value
         self.publish_rate_hz = float(self.get_parameter('publish_rate_hz').value)
@@ -34,6 +36,8 @@ class FakeActionChunkPublisherNode(Node):
         self.step_distance = float(self.get_parameter('step_distance').value)
         self.turn_per_step = float(self.get_parameter('turn_per_step').value)
         self.pattern = str(self.get_parameter('pattern').value).lower()
+        self.circle_radius = float(self.get_parameter('circle_radius').value)
+        self.straight_length = float(self.get_parameter('straight_length').value)
 
         self.seq_num = 1
         self.publisher = self.create_publisher(ActionChunk, self.action_topic, 10)

@@ -41,6 +41,7 @@ class ZenohCameraBridgeNode(Node):
         self.last_publish_time = 0.0
         self.prev_jpeg = None
         self.curr_jpeg = None
+        self.frame_id = 0
 
         # Open the Zenoh session before subscribing so camera callbacks can publish
         # immediately once frames start arriving.
@@ -105,11 +106,13 @@ class ZenohCameraBridgeNode(Node):
         # JSON cannot carry raw bytes directly. latin-1 preserves every byte value
         # one-to-one and matches the provided run_vla.py/run_action_head.py scripts.
         payload = {
+            'frame_id': self.frame_id,
             't_camera': now,
             'past_img': self.prev_jpeg.decode('latin-1'),
             'curr_img': self.curr_jpeg.decode('latin-1'),
         }
         self.publisher.put(json.dumps(payload).encode('utf-8'))
+        self.frame_id += 1
         self.last_publish_time = now
 
     def destroy_node(self):

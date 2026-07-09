@@ -185,8 +185,10 @@ class ActionHeadHandler:
         self.action_chunk_pub = action_chunk_pub
         self.metric_waypoint_spacing = metric_waypoint_spacing
         self.curr_actions = None
-        self.past_img = None
+        self.past_frame_id = None
         self.curr_img = None
+        self._frame_buffer = {}
+        self._frame_buffer_maxsize = 30
         self.seq_num = 1
 
     def action_callback(self, msg):
@@ -196,32 +198,45 @@ class ActionHeadHandler:
             shape = tuple(payload['shape'])
             data = np.array(payload['data'], dtype=dtype).reshape(shape)
             self.curr_actions = torch.from_numpy(data).to(self.device).to(torch.bfloat16)
-            self.maybe_run()
+            self.past_frame_id = payload.get('frame_id')
         except Exception:
             traceback.print_exc()
 
     def process_image(self, img_bytes):
         img = Image.open(io.BytesIO(img_bytes)).convert('RGB')
         img_tensor = TF.to_tensor(img)
+        h, w = img_tensor.shape[-2], img_tensor.shape[-1]
+        img_tensor = TF.center_crop(img_tensor, min(h, w))
+        img_tensor = TF.resize(img_tensor, (224, 224))
         processed_tensor = TF.resize(img_tensor, (96, 96)).unsqueeze(0)
         return transform(processed_tensor).to(self.device).to(torch.bfloat16)
 
     def image_callback(self, msg):
         try:
             payload = json.loads(msg.payload.to_bytes().decode('utf-8'))
-            self.past_img = self.process_image(payload['past_img'].encode('latin-1'))
-            self.curr_img = self.process_image(payload['curr_img'].encode('latin-1'))
-            self.maybe_run()
+            frame_id = payload.get('frame_id')
+            curr = self.process_image(payload['curr_img'].encode('latin-1'))
+            if frame_id is not None:
+                self._frame_buffer[frame_id] = curr
+                if len(self._frame_buffer) > self._frame_buffer_maxsize:
+                    del self._frame_buffer[min(self._frame_buffer)]
+            self.curr_img = curr
         except Exception:
             traceback.print_exc()
 
-    def maybe_run(self):
-        if self.curr_actions is None or self.past_img is None or self.curr_img is None:
+    def run_inference(self):
+        if self.curr_actions is None or self.curr_img is None:
+            return
+        if self.past_frame_id is None:
+            return
+        past_img = self._frame_buffer.get(self.past_frame_id)
+        if past_img is None:
+            print(f'[run_inference] frame_id {self.past_frame_id} not in buffer', flush=True)
             return
 
         start = time.time()
         with torch.no_grad():
-            predicted_dactions = self.shead(self.curr_img, self.past_img, self.curr_actions)
+            predicted_dactions = self.shead(self.curr_img, past_img, self.curr_actions)
             predicted_actions = delta_to_pose(predicted_dactions)
 
         waypoints = predicted_actions.float().cpu().numpy()
@@ -312,9 +327,12 @@ def main():
             f'publishing action_chunk={args.action_chunk_key}',
             flush=True,
         )
+        interval = 1 / 3
         try:
             while True:
-                time.sleep(1)
+                t0 = time.time()
+                handler.run_inference()
+                time.sleep(max(0.0, interval - (time.time() - t0)))
         finally:
             del action_sub
             del image_sub

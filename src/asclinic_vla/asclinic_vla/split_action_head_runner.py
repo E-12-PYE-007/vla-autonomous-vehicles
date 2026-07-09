@@ -181,28 +181,30 @@ class RosActionChunkPublisher:
 
 
 class ActionHeadZenohHandler:
-    """Keeps latest Zenoh inputs and triggers action-head inference when ready."""
+    """Stores latest Zenoh inputs; inference is driven by an external 3 Hz timer."""
 
     def __init__(self, shead, device_id, action_chunk_pub, ros_action_chunk_pub, metric_waypoint_spacing):
         self.shead = shead
         self.device_id = device_id
         self.curr_actions = None
-        self.past_img = None
+        self.past_frame_id = None
         self.curr_img = None
+        self._frame_buffer = {}
+        self._frame_buffer_maxsize = 30
         self.action_chunk_pub = action_chunk_pub
         self.ros_action_chunk_pub = ros_action_chunk_pub
         self.metric_waypoint_spacing = metric_waypoint_spacing
         self.seq_num = 1
 
     def action_callback(self, msg):
-        """Decode cloud VLA projected actions from JSON into a bfloat16 tensor."""
+        """Decode cloud VLA projected actions and record which frame they used."""
         try:
             payload = json.loads(msg.payload.to_bytes().decode('utf-8'))
             dtype = np.dtype(payload.get('dtype', 'float32'))
             shape = tuple(payload['shape'])
             data = np.array(payload['data'], dtype=dtype).reshape(shape)
             self.curr_actions = torch.from_numpy(data).to(self.device_id).to(torch.bfloat16)
-            self.maybe_run()
+            self.past_frame_id = payload.get('frame_id')
         except Exception:
             traceback.print_exc()
 
@@ -210,29 +212,42 @@ class ActionHeadZenohHandler:
         """Decode one JPEG frame and preprocess it for Edge_adapter."""
         img = Image.open(io.BytesIO(img_bytes)).convert('RGB')
         img_tensor = TF.to_tensor(img)
+        h, w = img_tensor.shape[-2], img_tensor.shape[-1]
+        img_tensor = TF.center_crop(img_tensor, min(h, w))
+        img_tensor = TF.resize(img_tensor, (224, 224))
         processed_tensor = TF.resize(img_tensor, (96, 96)).unsqueeze(0)
         return transform(processed_tensor).to(self.device_id).to(torch.bfloat16)
 
     def img_callback(self, msg):
-        """Decode the previous/current image pair from Zenoh camera JSON."""
+        """Store the latest camera frame and add it to the frame buffer."""
         try:
             payload = json.loads(msg.payload.to_bytes().decode('utf-8'))
-            self.past_img = self.process_image(payload['past_img'].encode('latin-1'))
-            self.curr_img = self.process_image(payload['curr_img'].encode('latin-1'))
-            self.maybe_run()
+            frame_id = payload.get('frame_id')
+            curr = self.process_image(payload['curr_img'].encode('latin-1'))
+            if frame_id is not None:
+                self._frame_buffer[frame_id] = curr
+                if len(self._frame_buffer) > self._frame_buffer_maxsize:
+                    del self._frame_buffer[min(self._frame_buffer)]
+            self.curr_img = curr
         except Exception:
             traceback.print_exc()
 
-    def maybe_run(self):
-        """Run the action head once all three inputs are available."""
-        if self.curr_actions is None or self.past_img is None or self.curr_img is None:
+    def run_inference(self):
+        """Run one action-head inference step; called by the 3 Hz main loop."""
+        if self.curr_actions is None or self.curr_img is None:
+            return
+        if self.past_frame_id is None:
+            return
+        past_img = self._frame_buffer.get(self.past_frame_id)
+        if past_img is None:
+            print(f'[run_inference] frame_id {self.past_frame_id} not in buffer', flush=True)
             return
 
         inference = ActionHeadInference(
             projected_actions=self.curr_actions,
             shead=self.shead,
             device_id=self.device_id,
-            past_img=self.past_img,
+            past_img=past_img,
             curr_img=self.curr_img,
             metric_waypoint_spacing=self.metric_waypoint_spacing,
         )
@@ -327,11 +342,14 @@ def main(argv=None):
             f'ros_action_topic={args.ros_action_topic or "disabled"}',
             flush=True,
         )
+        interval = 1 / 3
         try:
             while True:
+                t0 = time.time()
                 if ros_action_chunk_pub is not None:
                     rclpy.spin_once(ros_action_chunk_pub.node, timeout_sec=0.0)
-                time.sleep(1)
+                handler.run_inference()
+                time.sleep(max(0.0, interval - (time.time() - t0)))
         finally:
             del action_subscriber
             del img_subscriber
