@@ -214,7 +214,7 @@ class ActionHeadZenohHandler:
         img_tensor = TF.to_tensor(img)
         h, w = img_tensor.shape[-2], img_tensor.shape[-1]
         img_tensor = TF.center_crop(img_tensor, min(h, w))
-        img_tensor = TF.resize(img_tensor, (224, 224))
+        img_tensor = TF.resize(img_tensor, (224, 224)) 
         processed_tensor = TF.resize(img_tensor, (96, 96)).unsqueeze(0)
         return transform(processed_tensor).to(self.device_id).to(torch.bfloat16)
 

@@ -137,8 +137,8 @@ def build_plot():
     ax.set_aspect('equal')
     ax.grid(True, alpha=0.3)
     ax.set_title('VLA Robot Path (real-time)')
-    ax.set_xlabel('x  [m]')
-    ax.set_ylabel('y  [m]')
+    ax.set_xlabel('y  [m]  (left +)')
+    ax.set_ylabel('x  [m]  (forward +)')
 
     trail_line,    = ax.plot([], [], 'b-',  lw=1.2, alpha=0.5, label='Robot trail')
     robot_dot,     = ax.plot([], [], 'bo',  ms=8,               label='Robot')
@@ -152,6 +152,11 @@ def build_plot():
                      chunk_line, chunk_dots, lookahead_dot)
 
 
+def to_plot(wx, wy):
+    """World frame (x=forward, y=left) → plot frame (screen-x=left, screen-y=up)."""
+    return -wy, wx
+
+
 def make_updater(node, ax, artists, window_radius):
     trail_line, robot_dot, heading_line, chunk_line, chunk_dots, lookahead_dot = artists
 
@@ -162,30 +167,34 @@ def make_updater(node, ax, artists, window_radius):
             return artists
 
         rx, ry, rtheta = pose
+        px, py = to_plot(rx, ry)
 
         # Scroll the view window to follow the robot.
         r = window_radius
-        ax.set_xlim(rx - r, rx + r)
-        ax.set_ylim(ry - r, ry + r)
+        ax.set_xlim(px - r, px + r)
+        ax.set_ylim(py - r, py + r)
 
         # Past trajectory trail.
         if trail:
-            tx, ty = zip(*trail)
+            pts = [to_plot(x, y) for x, y in trail]
+            tx, ty = zip(*pts)
             trail_line.set_data(tx, ty)
         else:
             trail_line.set_data([], [])
 
         # Robot marker.
-        robot_dot.set_data([rx], [ry])
+        robot_dot.set_data([px], [py])
 
         # Heading indicator (line from robot in direction of theta).
         ex = rx + HEADING_ARROW_LEN * math.cos(rtheta)
         ey = ry + HEADING_ARROW_LEN * math.sin(rtheta)
-        heading_line.set_data([rx, ex], [ry, ey])
+        epx, epy = to_plot(ex, ey)
+        heading_line.set_data([px, epx], [py, epy])
 
         # Action-chunk waypoints in world frame.
         if chunk:
-            cx, cy = zip(*chunk)
+            pts = [to_plot(x, y) for x, y in chunk]
+            cx, cy = zip(*pts)
             chunk_line.set_data(cx, cy)
             chunk_dots.set_data(cx, cy)
         else:
@@ -194,7 +203,8 @@ def make_updater(node, ax, artists, window_radius):
 
         # Lookahead point the pure-pursuit controller is steering toward.
         if lookahead:
-            lookahead_dot.set_data([lookahead[0]], [lookahead[1]])
+            lpx, lpy = to_plot(*lookahead)
+            lookahead_dot.set_data([lpx], [lpy])
         else:
             lookahead_dot.set_data([], [])
 
