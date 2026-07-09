@@ -225,7 +225,7 @@ def main():
 
     fig, ax, artists = build_plot()
     updater = make_updater(node, ax, artists, args.window_radius)
-    _anim = FuncAnimation(fig, updater, interval=UPDATE_INTERVAL_MS, blit=False)
+    _anim = FuncAnimation(fig, updater, interval=UPDATE_INTERVAL_MS, blit=False, cache_frame_data=False)
 
     try:
         plt.show()
