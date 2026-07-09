@@ -1,1 +1,0 @@
-Place shead--750000_checkpoint.pt here if you want checkpoint-backed benchmarking.
