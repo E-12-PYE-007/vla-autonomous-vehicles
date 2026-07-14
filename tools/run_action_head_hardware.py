@@ -205,14 +205,8 @@ class ActionHeadHandler:
     def process_image(self, img_bytes):
         img = Image.open(io.BytesIO(img_bytes)).convert('RGB')
         img_tensor = TF.to_tensor(img)
-<<<<<<< HEAD
-        h, w = img_tensor.shape[-2], img_tensor.shape[-1]
-        img_tensor = TF.center_crop(img_tensor, min(h, w))
-        img_tensor = TF.resize(img_tensor, (224, 224))
-=======
         img_tensor = TF.center_crop(img_tensor, min(img.size))
         img_tensor = TF.resize(img_tensor, (224,224))
->>>>>>> 0834b78 (Flip direction for y and label coordinate system)
         processed_tensor = TF.resize(img_tensor, (96, 96)).unsqueeze(0)
         return transform(processed_tensor).to(self.device).to(torch.bfloat16)
 
