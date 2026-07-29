@@ -15,42 +15,24 @@ from custom_msgs.msg import LeftRightFloat32, LeftRightInt32
 from rclpy.node import Node
 
 
+CONTROL_PERIOD_SEC       = 0.1
+WHEEL_RADIUS             = 0.072
+ENCODER_COUNTS_PER_REV   = 4480
+KP_LEFT                  = 10.0
+KI_LEFT                  = 5.0
+KD_LEFT                  = 2.0
+KP_RIGHT                 = 10.0
+KI_RIGHT                 = 5.0
+KD_RIGHT                 = 2.0
+REF_TIMEOUT_SEC          = 0.5
+ENCODER_TIMEOUT_SEC      = 0.25
+WHEEL_SPEED_FILTER_ALPHA = 0.5
+MOTOR_FILTER_ALPHA       = 0.6
+
+
 class WheelPIDControllerNode(Node):
     def __init__(self):
         super().__init__('wheel_pid_controller')
-
-        # These parameters mirror the ASClinic tuning values, but are surfaced in
-        # YAML so they can be adjusted on the robot without editing Python code.
-        self.declare_parameter('wheel_reference_topic', 'wheel_velocity_reference')
-        self.declare_parameter('encoder_counts_topic', 'encoder_counts')
-        self.declare_parameter('duty_cycle_topic', 'set_motor_duty_cycle')
-        self.declare_parameter('control_period_sec', 0.1)
-        self.declare_parameter('wheel_radius', 0.072)
-        self.declare_parameter('encoder_counts_per_rev', 4480)
-        self.declare_parameter('kp_left', 10.0)
-        self.declare_parameter('ki_left', 5.0)
-        self.declare_parameter('kd_left', 2.0)
-        self.declare_parameter('kp_right', 10.0)
-        self.declare_parameter('ki_right', 5.0)
-        self.declare_parameter('kd_right', 2.0)
-        self.declare_parameter('ref_timeout_sec', 0.5)
-        self.declare_parameter('encoder_timeout_sec', 0.25)
-        self.declare_parameter('wheel_speed_filter_alpha', 0.5)
-        self.declare_parameter('motor_filter_alpha', 0.6)
-
-        self.dt = float(self.get_parameter('control_period_sec').value)
-        self.wheel_radius = float(self.get_parameter('wheel_radius').value)
-        self.counts_per_rev = int(self.get_parameter('encoder_counts_per_rev').value)
-        self.kp_left = float(self.get_parameter('kp_left').value)
-        self.ki_left = float(self.get_parameter('ki_left').value)
-        self.kd_left = float(self.get_parameter('kd_left').value)
-        self.kp_right = float(self.get_parameter('kp_right').value)
-        self.ki_right = float(self.get_parameter('ki_right').value)
-        self.kd_right = float(self.get_parameter('kd_right').value)
-        self.ref_timeout_sec = float(self.get_parameter('ref_timeout_sec').value)
-        self.encoder_timeout_sec = float(self.get_parameter('encoder_timeout_sec').value)
-        self.wheel_speed_filter_alpha = float(self.get_parameter('wheel_speed_filter_alpha').value)
-        self.motor_filter_alpha = float(self.get_parameter('motor_filter_alpha').value)
 
         self.v_left_ref = 0.0
         self.v_right_ref = 0.0
@@ -66,26 +48,24 @@ class WheelPIDControllerNode(Node):
         self.last_encoder_time = None
         self.seq_num = 1
 
-        # The reference comes from either Zenoh cmd_vel bridge or direct action chunk
-        # tracking. Encoder counts come from the Roboclaw node.
         self.create_subscription(
             LeftRightFloat32,
-            self.get_parameter('wheel_reference_topic').value,
+            'wheel_velocity_reference',
             self.reference_callback,
             10,
         )
         self.create_subscription(
             LeftRightInt32,
-            self.get_parameter('encoder_counts_topic').value,
+            'encoder_counts',
             self.encoder_callback,
             10,
         )
         self.publisher = self.create_publisher(
             LeftRightFloat32,
-            self.get_parameter('duty_cycle_topic').value,
+            'set_motor_duty_cycle',
             10,
         )
-        self.timer = self.create_timer(self.dt, self.control_loop)
+        self.timer = self.create_timer(CONTROL_PERIOD_SEC, self.control_loop)
 
     def reference_callback(self, msg):
         """Update desired wheel speeds and refresh the command watchdog."""
@@ -96,17 +76,16 @@ class WheelPIDControllerNode(Node):
     def encoder_callback(self, msg):
         """Convert encoder delta counts into filtered wheel speed measurements."""
         now = self.get_clock().now()
-        encoder_dt = self.dt
+        encoder_dt = CONTROL_PERIOD_SEC
         if self.last_encoder_time is not None:
             encoder_dt = max((now - self.last_encoder_time).nanoseconds / 1e9, 1e-6)
         self.last_encoder_time = now
 
-        distance_per_count = (2.0 * np.pi * self.wheel_radius) / self.counts_per_rev
+        distance_per_count = (2.0 * np.pi * WHEEL_RADIUS) / ENCODER_COUNTS_PER_REV
         raw_left = (float(msg.left) * distance_per_count) / encoder_dt
         raw_right = (float(msg.right) * distance_per_count) / encoder_dt
-        alpha = self.wheel_speed_filter_alpha
-        self.v_left_meas = alpha * raw_left + (1.0 - alpha) * self.v_left_meas
-        self.v_right_meas = alpha * raw_right + (1.0 - alpha) * self.v_right_meas
+        self.v_left_meas = WHEEL_SPEED_FILTER_ALPHA * raw_left + (1.0 - WHEEL_SPEED_FILTER_ALPHA) * self.v_left_meas
+        self.v_right_meas = WHEEL_SPEED_FILTER_ALPHA * raw_right + (1.0 - WHEEL_SPEED_FILTER_ALPHA) * self.v_right_meas
 
     @staticmethod
     def feedforward_left(v):
@@ -125,7 +104,7 @@ class WheelPIDControllerNode(Node):
     def control_loop(self):
         """Run feedforward + PID and publish bounded/smoothed duty cycles."""
         age = (self.get_clock().now() - self.last_ref_time).nanoseconds / 1e9
-        if age > self.ref_timeout_sec:
+        if age > REF_TIMEOUT_SEC:
             # If high-level commands stop, clear references and integral memory so
             # the robot stops instead of continuing on stale accumulated error.
             self.v_left_ref = 0.0
@@ -135,7 +114,7 @@ class WheelPIDControllerNode(Node):
 
         encoder_stale = (
             self.last_encoder_time is None or
-            (self.get_clock().now() - self.last_encoder_time).nanoseconds / 1e9 > self.encoder_timeout_sec
+            (self.get_clock().now() - self.last_encoder_time).nanoseconds / 1e9 > ENCODER_TIMEOUT_SEC
         )
         if encoder_stale:
             self.v_left_ref = 0.0
@@ -145,23 +124,23 @@ class WheelPIDControllerNode(Node):
 
         left_error = self.v_left_ref - self.v_left_meas
         right_error = self.v_right_ref - self.v_right_meas
-        d_left = (left_error - self.prev_left_error) / self.dt
-        d_right = (right_error - self.prev_right_error) / self.dt
+        d_left = (left_error - self.prev_left_error) / CONTROL_PERIOD_SEC
+        d_right = (right_error - self.prev_right_error) / CONTROL_PERIOD_SEC
 
-        self.integral_left = float(np.clip(self.integral_left + left_error * self.dt, -50.0, 50.0))
-        self.integral_right = float(np.clip(self.integral_right + right_error * self.dt, -50.0, 50.0))
+        self.integral_left = float(np.clip(self.integral_left + left_error * CONTROL_PERIOD_SEC, -50.0, 50.0))
+        self.integral_right = float(np.clip(self.integral_right + right_error * CONTROL_PERIOD_SEC, -50.0, 50.0))
 
         duty_left = (
             0.97 * self.feedforward_left(self.v_left_ref)
-            + self.kp_left * left_error
-            + self.ki_left * self.integral_left
-            + self.kd_left * d_left
+            + KP_LEFT * left_error
+            + KI_LEFT * self.integral_left
+            + KD_LEFT * d_left
         )
         duty_right = (
             0.99 * self.feedforward_right(self.v_right_ref)
-            + self.kp_right * right_error
-            + self.ki_right * self.integral_right
-            + self.kd_right * d_right
+            + KP_RIGHT * right_error
+            + KI_RIGHT * self.integral_right
+            + KD_RIGHT * d_right
         )
 
         self.prev_left_error = left_error
@@ -171,9 +150,8 @@ class WheelPIDControllerNode(Node):
         # reduce sharp current spikes from sudden model output changes.
         duty_left = float(np.clip(duty_left, -100.0, 100.0))
         duty_right = float(np.clip(duty_right, -100.0, 100.0))
-        alpha = self.motor_filter_alpha
-        duty_left = alpha * duty_left + (1.0 - alpha) * self.prev_duty_left
-        duty_right = alpha * duty_right + (1.0 - alpha) * self.prev_duty_right
+        duty_left = MOTOR_FILTER_ALPHA * duty_left + (1.0 - MOTOR_FILTER_ALPHA) * self.prev_duty_left
+        duty_right = MOTOR_FILTER_ALPHA * duty_right + (1.0 - MOTOR_FILTER_ALPHA) * self.prev_duty_right
         self.prev_duty_left = duty_left
         self.prev_duty_right = duty_right
         self.publish_duty(duty_left, duty_right)

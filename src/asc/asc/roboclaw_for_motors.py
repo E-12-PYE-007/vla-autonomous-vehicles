@@ -9,35 +9,32 @@ import rclpy
 from custom_msgs.msg import LeftRightFloat32, LeftRightInt32
 from rclpy.node import Node
 
-PERCENT_TO_ROBOCLAW = 327.67
+PERCENT_TO_ROBOCLAW    = 327.67
+DUTY_CYCLE_TOPIC       = 'set_motor_duty_cycle'
+CURRENT_DUTY_TOPIC     = 'current_motor_duty_cycle'
+ENCODER_COUNTS_TOPIC   = 'encoder_counts'
+USB_PORT               = '/dev/ttyACM0'
+BAUDRATE               = 38400
+ADDRESS                = 128
+ENCODER_PERIOD_SEC     = 0.1
+MAX_DUTY_CYCLE         = 100.0
+# M1 is the left motor and is mounted/wired in reverse, so commands and
+# encoder deltas are multiplied by -1. M2/right stays positive.
+LEFT_MOTOR_MULTIPLIER  = -1.0
+RIGHT_MOTOR_MULTIPLIER = 1.0
+# Set to True to test the whole ROS/VLA stack without opening the serial
+# port or sending commands to physical motors.
+DRY_RUN                = False
 
 
 class RoboclawForMotorsNode(Node):
     def __init__(self):
         super().__init__('roboclaw_for_motors')
 
-        # dry_run lets us test the whole ROS/VLA/Zenoh stack without opening the
-        # serial port or sending commands to physical motors.
-        self.declare_parameter('duty_cycle_topic', 'set_motor_duty_cycle')
-        self.declare_parameter('current_duty_cycle_topic', 'current_motor_duty_cycle')
-        self.declare_parameter('encoder_counts_topic', 'encoder_counts')
-        self.declare_parameter('roboclaw_usb_port', '/dev/ttyACM0')
-        self.declare_parameter('roboclaw_baudrate', 38400)
-        self.declare_parameter('roboclaw_address', 128)
-        self.declare_parameter('encoder_period_sec', 0.1)
-        self.declare_parameter('max_duty_cycle', 100.0)
-        # Match the original ASClinic hardware defaults:
-        # M1 is the left motor and is mounted/wired in reverse, so commands and
-        # encoder deltas are multiplied by -1. M2/right stays positive.
-        self.declare_parameter('left_motor_multiplier', -1.0)
-        self.declare_parameter('right_motor_multiplier', 1.0)
-        self.declare_parameter('dry_run', False)
-
-        self.address = int(self.get_parameter('roboclaw_address').value)
-        self.max_duty_cycle = float(self.get_parameter('max_duty_cycle').value)
-        self.left_multiplier = float(self.get_parameter('left_motor_multiplier').value)
-        self.right_multiplier = float(self.get_parameter('right_motor_multiplier').value)
-        self.dry_run = bool(self.get_parameter('dry_run').value)
+        self.address = ADDRESS
+        self.max_duty_cycle = MAX_DUTY_CYCLE
+        self.left_multiplier = LEFT_MOTOR_MULTIPLIER
+        self.right_multiplier = RIGHT_MOTOR_MULTIPLIER
         self.prev_left_encoder = None
         self.prev_right_encoder = None
         self.seq_num = 1
@@ -45,31 +42,28 @@ class RoboclawForMotorsNode(Node):
         self.roboclaw = None
         self.connected = False
 
-        if not self.dry_run:
+        if not DRY_RUN:
             self.connect_roboclaw()
         else:
             self.get_logger().warn('Roboclaw node running in dry_run mode')
 
         self.create_subscription(
             LeftRightFloat32,
-            self.get_parameter('duty_cycle_topic').value,
+            DUTY_CYCLE_TOPIC,
             self.drive_motors_callback,
             1,
         )
         self.current_duty_publisher = self.create_publisher(
             LeftRightFloat32,
-            self.get_parameter('current_duty_cycle_topic').value,
+            CURRENT_DUTY_TOPIC,
             10,
         )
         self.encoder_publisher = self.create_publisher(
             LeftRightInt32,
-            self.get_parameter('encoder_counts_topic').value,
+            ENCODER_COUNTS_TOPIC,
             10,
         )
-        self.encoder_timer = self.create_timer(
-            float(self.get_parameter('encoder_period_sec').value),
-            self.publish_encoder_delta,
-        )
+        self.encoder_timer = self.create_timer(ENCODER_PERIOD_SEC, self.publish_encoder_delta)
 
     def connect_roboclaw(self):
         """Open the Basicmicro/Roboclaw serial connection."""
@@ -78,16 +72,14 @@ class RoboclawForMotorsNode(Node):
         except ImportError as exc:
             raise RuntimeError('Install basicmicro on the robot to use Roboclaw hardware') from exc
 
-        port = self.get_parameter('roboclaw_usb_port').value
-        baudrate = int(self.get_parameter('roboclaw_baudrate').value)
-        self.roboclaw = Basicmicro(port, baudrate)
+        self.roboclaw = Basicmicro(USB_PORT, BAUDRATE)
         self.connected = bool(self.roboclaw.Open())
         if not self.connected:
             self.get_logger().warn(
-                f'Failed to open Roboclaw on {port} at {baudrate}; motor commands will be ignored'
+                f'Failed to open Roboclaw on {USB_PORT} at {BAUDRATE}; motor commands will be ignored'
             )
             return
-        self.get_logger().info(f'Connected to Roboclaw on {port}')
+        self.get_logger().info(f'Connected to Roboclaw on {USB_PORT}')
 
     @staticmethod
     def clamp(value, low, high):

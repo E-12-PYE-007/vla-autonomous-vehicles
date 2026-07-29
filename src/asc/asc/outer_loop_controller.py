@@ -12,8 +12,19 @@ import math
 
 import rclpy
 from custom_msgs.msg import ActionChunk, LeftRightFloat32
-from geometry_msgs.msg import Pose2D
+from geometry_msgs.msg import Pose2D, Twist
 from rclpy.node import Node
+
+
+WHEEL_BASE          = 0.22
+LOOKAHEAD_DISTANCE  = 0.35
+MAX_LINEAR_SPEED    = 0.30
+MAX_ANGULAR_SPEED   = 1.20
+COMMAND_TIMEOUT_SEC = 0.75
+K_CROSS_TRACK       = 1.6
+K_HEADING           = 1.0
+GOAL_TOLERANCE      = 0.05
+CONTROL_RATE_HZ     = 10.0
 
 
 def wrap_to_pi(angle):
@@ -25,27 +36,8 @@ class OdomActionChunkTrackerNode(Node):
     def __init__(self):
         super().__init__('odom_action_chunk_tracker')
 
-        self.declare_parameter('action_topic', '/asyncvla/action_chunk')
-        self.declare_parameter('pose2d_topic', 'odom_pose2d')
-        self.declare_parameter('wheel_reference_topic', 'wheel_velocity_reference')
-        self.declare_parameter('wheel_base', 0.22)
-        self.declare_parameter('lookahead_distance', 0.35)
-        self.declare_parameter('max_linear_speed', 0.30)
-        self.declare_parameter('max_angular_speed', 1.20)
-        self.declare_parameter('command_timeout_sec', 0.75)
-        self.declare_parameter('control_rate_hz', 10.0)
-        self.declare_parameter('k_cross_track', 1.6)
-        self.declare_parameter('k_heading', 1.0)
-        self.declare_parameter('goal_tolerance', 0.05)
-
-        self.wheel_base = float(self.get_parameter('wheel_base').value)
-        self.lookahead_distance = float(self.get_parameter('lookahead_distance').value)
-        self.max_linear_speed = float(self.get_parameter('max_linear_speed').value)
-        self.max_angular_speed = float(self.get_parameter('max_angular_speed').value)
-        self.command_timeout_sec = float(self.get_parameter('command_timeout_sec').value)
-        self.k_cross_track = float(self.get_parameter('k_cross_track').value)
-        self.k_heading = float(self.get_parameter('k_heading').value)
-        self.goal_tolerance = float(self.get_parameter('goal_tolerance').value)
+        self.declare_parameter('use_sim', False)
+        self.use_sim = bool(self.get_parameter('use_sim').value)
 
         self.current_pose = None
         self.reference_path = []
@@ -55,24 +47,31 @@ class OdomActionChunkTrackerNode(Node):
 
         self.create_subscription(
             Pose2D,
-            self.get_parameter('pose2d_topic').value,
+            'odom_pose2d',
             self.pose_callback,
             10,
         )
         self.create_subscription(
             ActionChunk,
-            self.get_parameter('action_topic').value,
+            '/asyncvla/action_chunk',
             self.action_callback,
             10,
         )
-        self.publisher = self.create_publisher(
-            LeftRightFloat32,
-            self.get_parameter('wheel_reference_topic').value,
-            10,
-        )
 
-        control_rate_hz = float(self.get_parameter('control_rate_hz').value)
-        self.timer = self.create_timer(1.0 / max(control_rate_hz, 1.0), self.control_loop)
+        if self.use_sim:
+            self.publisher = self.create_publisher(
+                Twist,
+                'cmd_vel',
+                10,
+            )
+        else:
+            self.publisher = self.create_publisher(
+                LeftRightFloat32,
+                'wheel_velocity_reference',
+                10,
+            )
+
+        self.timer = self.create_timer(1.0 / CONTROL_RATE_HZ, self.control_loop)
 
         self.get_logger().info('Odometry-aware ActionChunk tracker started')
 
@@ -135,7 +134,7 @@ class OdomActionChunkTrackerNode(Node):
         target_idx = len(self.reference_path) - 1
         for idx in range(best_idx, len(self.reference_path)):
             px, py, _ = self.reference_path[idx]
-            if math.hypot(px - x, py - y) >= self.lookahead_distance:
+            if math.hypot(px - x, py - y) >= LOOKAHEAD_DISTANCE:
                 target_idx = idx
                 break
 
@@ -148,7 +147,7 @@ class OdomActionChunkTrackerNode(Node):
             return
 
         age = (self.get_clock().now() - self.last_action_time).nanoseconds / 1e9
-        if age > self.command_timeout_sec:
+        if age > COMMAND_TIMEOUT_SEC:
             self.publish_wheel_refs(0.0, 0.0)
             return
 
@@ -165,7 +164,7 @@ class OdomActionChunkTrackerNode(Node):
         dx = tx - x
         dy = ty - y
         distance_to_target = math.hypot(dx, dy)
-        if distance_to_target < self.goal_tolerance and target == self.reference_path[-1]:
+        if distance_to_target < GOAL_TOLERANCE and target == self.reference_path[-1]:
             self.publish_wheel_refs(0.0, 0.0)
             return
 
@@ -176,22 +175,28 @@ class OdomActionChunkTrackerNode(Node):
         local_y = -math.sin(yaw) * dx + math.cos(yaw) * dy
         heading_error = wrap_to_pi(tyaw - yaw)
 
-        linear = self.clamp(local_x, 0.0, self.max_linear_speed)
-        angular = self.k_cross_track * local_y + self.k_heading * heading_error
-        angular = self.clamp(angular, -self.max_angular_speed, self.max_angular_speed)
+        linear = self.clamp(local_x, 0.0, MAX_LINEAR_SPEED)
+        angular = K_CROSS_TRACK * local_y + K_HEADING * heading_error
+        angular = self.clamp(angular, -MAX_ANGULAR_SPEED, MAX_ANGULAR_SPEED)
 
-        left = linear - 0.5 * self.wheel_base * angular
-        right = linear + 0.5 * self.wheel_base * angular
+        left = linear - 0.5 * WHEEL_BASE * angular
+        right = linear + 0.5 * WHEEL_BASE * angular
         self.publish_wheel_refs(left, right)
 
     def publish_wheel_refs(self, left, right):
-        """Publish desired wheel speeds for the low-level PID controller."""
-        msg = LeftRightFloat32()
-        msg.left = float(left)
-        msg.right = float(right)
-        msg.seq_num = self.seq_num
-        self.publisher.publish(msg)
-        self.seq_num += 1
+        """Publish desired wheel speeds — Twist for sim, LeftRightFloat32 for hardware."""
+        if self.use_sim:
+            msg = Twist()
+            msg.linear.x = (left + right) / 2.0
+            msg.angular.z = (right - left) / WHEEL_BASE
+            self.publisher.publish(msg)
+        else:
+            msg = LeftRightFloat32()
+            msg.left = float(left)
+            msg.right = float(right)
+            msg.seq_num = self.seq_num
+            self.publisher.publish(msg)
+            self.seq_num += 1
 
 
 def main(args=None):
