@@ -1,0 +1,7 @@
+std_msgs/Header header
+int32 job_id
+float64 job_start_stamp
+float32 job_start_x
+float32 job_start_y
+float32 job_start_theta
+std_msgs/Float32MultiArray kv_values

@@ -14,11 +14,12 @@ find_package(std_msgs REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/ActionChunk.msg"
   "msg/AsyncHiddenState.msg"
-  "msg/CompressedObservation.msg"
   "msg/ImageWithSeqNum.msg"
-  "msg/GoalSpec.msg"
   "msg/LeftRightFloat32.msg"
   "msg/LeftRightInt32.msg"
+  "msg/TicImageTokens.msg"
+  "msg/TicKVCache.msg"
+  "msg/TicLatencyMetadata.msg"
   DEPENDENCIES geometry_msgs sensor_msgs std_msgs
 )
 
