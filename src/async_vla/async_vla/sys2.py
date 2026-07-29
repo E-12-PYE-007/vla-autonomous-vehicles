@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 
 from functools import lru_cache
-from typing import Optional
-
 import numpy as np
 import torch
 from PIL import Image
@@ -11,8 +9,6 @@ from torch.nn.utils.rnn import pad_sequence
 import rclpy
 from cv_bridge import CvBridge
 from rclpy.node import Node
-from std_msgs.msg import MultiArrayDimension, MultiArrayLayout
-
 from custom_msgs.msg import AsyncHiddenState, ImageWithSeqNum
 
 from prismatic.extern.hf.configuration_prismatic import OpenVLAConfig
@@ -34,6 +30,7 @@ DEFAULT_GOAL = 'Go to the yellow bin'
 class Sys2(Node):
     def __init__(self):
         super().__init__("sys2")
+        self.get_logger().info('[AsyncVLA Sys2] initialising...')
 
         # Load model
         vla, action_proj, device, num_patches, action_tokenizer, processor = _load_model(VLA_PATH, RESUME_STEP)
@@ -62,7 +59,7 @@ class Sys2(Node):
         )
 
     def img_callback(self, msg: ImageWithSeqNum):
-        img = Image.fromarray(self._bridge.imgmsg_to_cv2(msg.current_image, desired_encoding='rgb8'))
+        img = Image.fromarray(self.bridge.imgmsg_to_cv2(msg.img, desired_encoding='rgb8'))
 
         actions = self.inference.run(img, self.goal_text)
 

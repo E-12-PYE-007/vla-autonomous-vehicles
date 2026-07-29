@@ -187,10 +187,10 @@ def _delta_to_pose(delta: torch.Tensor) -> torch.Tensor:
 def main(args=None):
     rclpy.init(args=args)
 
-    sys2_node = Sys1()
-    rclpy.spin(sys2_node)
+    sys1_node = Sys1()
+    rclpy.spin(sys1_node)
 
-    sys2_node.destroy_node()
+    sys1_node.destroy_node()
     rclpy.shutdown()
 
 if __name__ == "__main__":
