@@ -57,6 +57,12 @@ class OdomActionChunkTrackerNode(Node):
             self.action_callback,
             10,
         )
+        self.create_subscription(
+            ActionChunk,
+            "/ticvla/action_chunk",
+            self.action_callback,
+            10,
+        )
 
         if self.use_sim:
             self.publisher = self.create_publisher(

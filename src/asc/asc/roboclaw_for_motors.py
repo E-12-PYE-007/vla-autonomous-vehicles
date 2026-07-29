@@ -10,9 +10,6 @@ from custom_msgs.msg import LeftRightFloat32, LeftRightInt32
 from rclpy.node import Node
 
 PERCENT_TO_ROBOCLAW = 327.67
-DUTY_CYCLE_TOPIC = "set_motor_duty_cycle"
-CURRENT_DUTY_TOPIC = "current_motor_duty_cycle"
-ENCODER_COUNTS_TOPIC = "encoder_counts"
 USB_PORT = "/dev/ttyACM0"
 BAUDRATE = 38400
 ADDRESS = 128
@@ -49,18 +46,18 @@ class RoboclawForMotorsNode(Node):
 
         self.create_subscription(
             LeftRightFloat32,
-            DUTY_CYCLE_TOPIC,
+            "set_motor_duty_cycle",
             self.drive_motors_callback,
             1,
         )
         self.current_duty_publisher = self.create_publisher(
             LeftRightFloat32,
-            CURRENT_DUTY_TOPIC,
+            "current_motor_duty_cycle",
             10,
         )
         self.encoder_publisher = self.create_publisher(
             LeftRightInt32,
-            ENCODER_COUNTS_TOPIC,
+            "encoder_counts",
             10,
         )
         self.encoder_timer = self.create_timer(ENCODER_PERIOD_SEC, self.publish_encoder_delta)

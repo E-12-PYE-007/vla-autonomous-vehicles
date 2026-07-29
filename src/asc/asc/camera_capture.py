@@ -12,7 +12,6 @@ CAMERA_DEVICE = 0
 FRAME_WIDTH = 1920
 FRAME_HEIGHT = 1080
 FPS = 5.0
-IMAGE_TOPIC = "/cam"
 SHOW_PREVIEW = False
 AUTOFOCUS = False
 FOCUS = 0
@@ -25,7 +24,7 @@ class CameraCaptureNode(Node):
         super().__init__("camera_capture")
 
         self.bridge = CvBridge()
-        self.publisher = self.create_publisher(ImageWithSeqNum, IMAGE_TOPIC, 10)
+        self.publisher = self.create_publisher(ImageWithSeqNum, "/cam", 10)
         self.seq_num = 0
 
         self.camera = self._open_camera(CAMERA_DEVICE)
@@ -45,7 +44,7 @@ class CameraCaptureNode(Node):
 
         timer_fps = actual_fps if actual_fps > 0.0 else FPS
         self.timer = self.create_timer(1.0 / timer_fps, self.publish_frame)
-        self.get_logger().info(f"Publishing camera frames from {CAMERA_DEVICE} to {IMAGE_TOPIC} " f"at {FRAME_WIDTH}x{FRAME_HEIGHT}@{timer_fps:.1f} Hz")
+        self.get_logger().info(f"Publishing camera frames from {CAMERA_DEVICE} to /cam at {FRAME_WIDTH}x{FRAME_HEIGHT}@{timer_fps:.1f} Hz")
         if VERBOSITY >= 1:
             self.get_logger().info("Camera properties: " f"width={self.camera.get(cv2.CAP_PROP_FRAME_WIDTH)}, " f"height={self.camera.get(cv2.CAP_PROP_FRAME_HEIGHT)}, " f"fps={self.camera.get(cv2.CAP_PROP_FPS)}, " f"autofocus={self.camera.get(cv2.CAP_PROP_AUTOFOCUS)}, " f"focus={self.camera.get(cv2.CAP_PROP_FOCUS)}, " f"buffer={self.camera.get(cv2.CAP_PROP_BUFFERSIZE)}")
 
