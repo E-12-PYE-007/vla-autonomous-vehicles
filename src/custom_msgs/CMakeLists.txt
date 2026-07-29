@@ -20,6 +20,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/TicImageTokens.msg"
   "msg/TicKVCache.msg"
   "msg/TicLatencyMetadata.msg"
+  "msg/TicPixelValues.msg"
   DEPENDENCIES geometry_msgs sensor_msgs std_msgs
 )
 
