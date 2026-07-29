@@ -26,6 +26,7 @@ from transformers.modeling_outputs import CausalLMOutputWithPast
 VLA_PATH = './AsyncVLA_release'
 RESUME_STEP = 750000
 DEFAULT_GOAL = 'Go to the yellow bin'
+DEVICE_TYPE = 'cuda'
 
 class Sys2(Node):
     def __init__(self):
@@ -80,6 +81,8 @@ class Inference:
         self.num_patches = num_patches
         self.action_tokenizer = action_tokenizer
         self.processor = processor
+        # TODO: uncomment and pass pose_projector here when enabling proprio conditioning
+        # self.pose_projector = pose_projector
 
     def run(self, img: Image.Image, goal_text: str) -> np.ndarray:
         batch = self._prepare_batch(img, goal_text)
@@ -123,10 +126,9 @@ class Inference:
         }
 
     def _forward(self, batch: dict) -> np.ndarray:
-        device_type = 'cuda' if torch.cuda.is_available() else 'cpu'
         modality_id = torch.as_tensor([7], dtype=torch.float32, device=self.device)
 
-        with torch.no_grad(), torch.autocast(device_type, dtype=torch.bfloat16):
+        with torch.no_grad(), torch.autocast(DEVICE_TYPE, dtype=torch.bfloat16):
             output: CausalLMOutputWithPast = self.vla(
                 input_ids=batch['input_ids'].to(self.device),
                 attention_mask=batch['attention_mask'].to(self.device),
@@ -138,6 +140,11 @@ class Inference:
                 noisy_action_projector=None,
                 diffusion_timestep_embeddings=None,
                 use_film=False,
+                # TODO: uncomment to match original run_asyncvla.py behaviour (always conditions on a
+                # goal pose token even in language-only mode). If uncommented, also uncomment the
+                # pose_projector lines in _load_model and add 1 to num_patches there.
+                # proprio=torch.zeros(1, 4, dtype=torch.bfloat16, device=self.device),
+                # proprio_projector=self.pose_projector,
             )
 
         gt_token_ids = batch['labels'][:, 1:].to(self.device)
@@ -193,9 +200,18 @@ def _load_model(vla_path: str, resume_step: int):
     action_proj.load_state_dict(_load_checkpoint('action_proj', vla_path, resume_step))
     action_proj = action_proj.to(torch.bfloat16).to(device)
 
+    # TODO: uncomment to load pose_projector and enable proprio conditioning (see _forward TODO).
+    # from prismatic.models.projectors import ProprioProjector
+    # from prismatic.vla.constants import POSE_DIM
+    # pose_projector = ProprioProjector(llm_dim=vla.llm_dim, proprio_dim=POSE_DIM)
+    # pose_projector.load_state_dict(_load_checkpoint('pose_projector', vla_path, resume_step))
+    # pose_projector = pose_projector.to(torch.bfloat16).to(device)
+
     num_patches = (
         vla.vision_backbone.get_num_patches()
         * vla.vision_backbone.get_num_images_in_input()
+        # TODO: uncomment the line below if enabling proprio conditioning above
+        # + 1  # extra token inserted by proprio_projector
     )
     action_tokenizer = ActionTokenizer(processor.tokenizer)
 
