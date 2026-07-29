@@ -15,24 +15,24 @@ from custom_msgs.msg import LeftRightFloat32, LeftRightInt32
 from rclpy.node import Node
 
 
-CONTROL_PERIOD_SEC       = 0.1
-WHEEL_RADIUS             = 0.072
-ENCODER_COUNTS_PER_REV   = 4480
-KP_LEFT                  = 10.0
-KI_LEFT                  = 5.0
-KD_LEFT                  = 2.0
-KP_RIGHT                 = 10.0
-KI_RIGHT                 = 5.0
-KD_RIGHT                 = 2.0
-REF_TIMEOUT_SEC          = 0.5
-ENCODER_TIMEOUT_SEC      = 0.25
+CONTROL_PERIOD_SEC = 0.1
+WHEEL_RADIUS = 0.072
+ENCODER_COUNTS_PER_REV = 4480
+KP_LEFT = 10.0
+KI_LEFT = 5.0
+KD_LEFT = 2.0
+KP_RIGHT = 10.0
+KI_RIGHT = 5.0
+KD_RIGHT = 2.0
+REF_TIMEOUT_SEC = 0.5
+ENCODER_TIMEOUT_SEC = 0.25
 WHEEL_SPEED_FILTER_ALPHA = 0.5
-MOTOR_FILTER_ALPHA       = 0.6
+MOTOR_FILTER_ALPHA = 0.6
 
 
 class WheelPIDControllerNode(Node):
     def __init__(self):
-        super().__init__('wheel_pid_controller')
+        super().__init__("inner_loop_controller")
 
         self.v_left_ref = 0.0
         self.v_right_ref = 0.0
@@ -50,19 +50,19 @@ class WheelPIDControllerNode(Node):
 
         self.create_subscription(
             LeftRightFloat32,
-            'wheel_velocity_reference',
+            "wheel_velocity_reference",
             self.reference_callback,
             10,
         )
         self.create_subscription(
             LeftRightInt32,
-            'encoder_counts',
+            "encoder_counts",
             self.encoder_callback,
             10,
         )
         self.publisher = self.create_publisher(
             LeftRightFloat32,
-            'set_motor_duty_cycle',
+            "set_motor_duty_cycle",
             10,
         )
         self.timer = self.create_timer(CONTROL_PERIOD_SEC, self.control_loop)
@@ -112,10 +112,7 @@ class WheelPIDControllerNode(Node):
             self.integral_left = 0.0
             self.integral_right = 0.0
 
-        encoder_stale = (
-            self.last_encoder_time is None or
-            (self.get_clock().now() - self.last_encoder_time).nanoseconds / 1e9 > ENCODER_TIMEOUT_SEC
-        )
+        encoder_stale = self.last_encoder_time is None or (self.get_clock().now() - self.last_encoder_time).nanoseconds / 1e9 > ENCODER_TIMEOUT_SEC
         if encoder_stale:
             self.v_left_ref = 0.0
             self.v_right_ref = 0.0
@@ -130,18 +127,8 @@ class WheelPIDControllerNode(Node):
         self.integral_left = float(np.clip(self.integral_left + left_error * CONTROL_PERIOD_SEC, -50.0, 50.0))
         self.integral_right = float(np.clip(self.integral_right + right_error * CONTROL_PERIOD_SEC, -50.0, 50.0))
 
-        duty_left = (
-            0.97 * self.feedforward_left(self.v_left_ref)
-            + KP_LEFT * left_error
-            + KI_LEFT * self.integral_left
-            + KD_LEFT * d_left
-        )
-        duty_right = (
-            0.99 * self.feedforward_right(self.v_right_ref)
-            + KP_RIGHT * right_error
-            + KI_RIGHT * self.integral_right
-            + KD_RIGHT * d_right
-        )
+        duty_left = 0.97 * self.feedforward_left(self.v_left_ref) + KP_LEFT * left_error + KI_LEFT * self.integral_left + KD_LEFT * d_left
+        duty_right = 0.99 * self.feedforward_right(self.v_right_ref) + KP_RIGHT * right_error + KI_RIGHT * self.integral_right + KD_RIGHT * d_right
 
         self.prev_left_error = left_error
         self.prev_right_error = right_error
@@ -177,5 +164,5 @@ def main(args=None):
         rclpy.shutdown()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

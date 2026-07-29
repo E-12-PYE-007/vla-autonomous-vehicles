@@ -16,15 +16,15 @@ from geometry_msgs.msg import Pose2D, Twist
 from rclpy.node import Node
 
 
-WHEEL_BASE          = 0.22
-LOOKAHEAD_DISTANCE  = 0.35
-MAX_LINEAR_SPEED    = 0.30
-MAX_ANGULAR_SPEED   = 1.20
+WHEEL_BASE = 0.22
+LOOKAHEAD_DISTANCE = 0.35
+MAX_LINEAR_SPEED = 0.30
+MAX_ANGULAR_SPEED = 1.20
 COMMAND_TIMEOUT_SEC = 0.75
-K_CROSS_TRACK       = 1.6
-K_HEADING           = 1.0
-GOAL_TOLERANCE      = 0.05
-CONTROL_RATE_HZ     = 10.0
+K_CROSS_TRACK = 1.6
+K_HEADING = 1.0
+GOAL_TOLERANCE = 0.05
+CONTROL_RATE_HZ = 10.0
 
 
 def wrap_to_pi(angle):
@@ -34,10 +34,10 @@ def wrap_to_pi(angle):
 
 class OdomActionChunkTrackerNode(Node):
     def __init__(self):
-        super().__init__('odom_action_chunk_tracker')
+        super().__init__("outer_loop_controller")
 
-        self.declare_parameter('use_sim', False)
-        self.use_sim = bool(self.get_parameter('use_sim').value)
+        self.declare_parameter("use_sim", False)
+        self.use_sim = bool(self.get_parameter("use_sim").value)
 
         self.current_pose = None
         self.reference_path = []
@@ -47,13 +47,13 @@ class OdomActionChunkTrackerNode(Node):
 
         self.create_subscription(
             Pose2D,
-            'odom_pose2d',
+            "odom_pose2d",
             self.pose_callback,
             10,
         )
         self.create_subscription(
             ActionChunk,
-            '/asyncvla/action_chunk',
+            "/asyncvla/action_chunk",
             self.action_callback,
             10,
         )
@@ -61,19 +61,19 @@ class OdomActionChunkTrackerNode(Node):
         if self.use_sim:
             self.publisher = self.create_publisher(
                 Twist,
-                'cmd_vel',
+                "cmd_vel",
                 10,
             )
         else:
             self.publisher = self.create_publisher(
                 LeftRightFloat32,
-                'wheel_velocity_reference',
+                "wheel_velocity_reference",
                 10,
             )
 
         self.timer = self.create_timer(1.0 / CONTROL_RATE_HZ, self.control_loop)
 
-        self.get_logger().info('Odometry-aware ActionChunk tracker started')
+        self.get_logger().info("Odometry-aware ActionChunk tracker started")
 
     @staticmethod
     def clamp(value, low, high):
@@ -87,10 +87,10 @@ class OdomActionChunkTrackerNode(Node):
     def action_callback(self, msg):
         """Anchor a new robot-relative VLA chunk in the current odom frame."""
         if self.current_pose is None:
-            self.get_logger().warn('Ignoring ActionChunk until odometry pose is available')
+            self.get_logger().warn("Ignoring ActionChunk until odometry pose is available")
             return
         if not msg.relative_poses:
-            self.get_logger().warn('Ignoring empty ActionChunk')
+            self.get_logger().warn("Ignoring empty ActionChunk")
             return
 
         anchor = self.current_pose
@@ -121,7 +121,7 @@ class OdomActionChunkTrackerNode(Node):
         search_end = len(self.reference_path)
 
         best_idx = self.closest_idx
-        best_dist = float('inf')
+        best_dist = float("inf")
         for idx in range(search_start, search_end):
             px, py, _ = self.reference_path[idx]
             dist = math.hypot(px - x, py - y)
@@ -210,5 +210,5 @@ def main(args=None):
         rclpy.shutdown()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

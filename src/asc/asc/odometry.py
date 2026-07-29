@@ -16,11 +16,11 @@ from nav_msgs.msg import Odometry
 from rclpy.node import Node
 
 
-WHEEL_RADIUS        = 0.072
-WHEEL_BASE          = 0.22
+WHEEL_RADIUS = 0.072
+WHEEL_BASE = 0.22
 ENCODER_COUNTS_PER_REV = 4480
-ODOM_FRAME_ID       = 'odom'
-BASE_FRAME_ID       = 'base_link'
+ODOM_FRAME_ID = "odom"
+BASE_FRAME_ID = "base_link"
 
 
 def wrap_to_pi(angle):
@@ -30,35 +30,35 @@ def wrap_to_pi(angle):
 
 class EncoderOdometryNode(Node):
     def __init__(self):
-        super().__init__('encoder_odometry')
+        super().__init__("odometry")
 
-        self.declare_parameter('use_sim', False)
-        use_sim = bool(self.get_parameter('use_sim').value)
+        self.declare_parameter("use_sim", False)
+        use_sim = bool(self.get_parameter("use_sim").value)
 
         self.x = 0.0
         self.y = 0.0
         self.theta = 0.0
         self.last_time = self.get_clock().now()
 
-        self.odom_pub = self.create_publisher(Odometry, 'odom', 10)
-        self.pose2d_pub = self.create_publisher(Pose2D, 'odom_pose2d', 10)
+        self.odom_pub = self.create_publisher(Odometry, "odom", 10)
+        self.pose2d_pub = self.create_publisher(Pose2D, "odom_pose2d", 10)
 
         if use_sim:
             self.create_subscription(
                 Odometry,
-                'odom',
+                "odom",
                 self.sim_odom_callback,
                 10,
             )
-            self.get_logger().info('Odometry node started in sim mode (passthrough from /odom)')
+            self.get_logger().info("Odometry node started in sim mode (passthrough from /odom)")
         else:
             self.create_subscription(
                 LeftRightInt32,
-                'encoder_counts',
+                "encoder_counts",
                 self.encoder_callback,
                 10,
             )
-            self.get_logger().info('Encoder odometry node started')
+            self.get_logger().info("Encoder odometry node started")
 
     def sim_odom_callback(self, msg):
         """Pass Gazebo odometry through as odom_pose2d; skip encoder integration."""
@@ -129,5 +129,5 @@ def main(args=None):
         rclpy.shutdown()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

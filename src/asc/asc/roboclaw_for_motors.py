@@ -9,27 +9,27 @@ import rclpy
 from custom_msgs.msg import LeftRightFloat32, LeftRightInt32
 from rclpy.node import Node
 
-PERCENT_TO_ROBOCLAW    = 327.67
-DUTY_CYCLE_TOPIC       = 'set_motor_duty_cycle'
-CURRENT_DUTY_TOPIC     = 'current_motor_duty_cycle'
-ENCODER_COUNTS_TOPIC   = 'encoder_counts'
-USB_PORT               = '/dev/ttyACM0'
-BAUDRATE               = 38400
-ADDRESS                = 128
-ENCODER_PERIOD_SEC     = 0.1
-MAX_DUTY_CYCLE         = 100.0
+PERCENT_TO_ROBOCLAW = 327.67
+DUTY_CYCLE_TOPIC = "set_motor_duty_cycle"
+CURRENT_DUTY_TOPIC = "current_motor_duty_cycle"
+ENCODER_COUNTS_TOPIC = "encoder_counts"
+USB_PORT = "/dev/ttyACM0"
+BAUDRATE = 38400
+ADDRESS = 128
+ENCODER_PERIOD_SEC = 0.1
+MAX_DUTY_CYCLE = 100.0
 # M1 is the left motor and is mounted/wired in reverse, so commands and
 # encoder deltas are multiplied by -1. M2/right stays positive.
-LEFT_MOTOR_MULTIPLIER  = -1.0
+LEFT_MOTOR_MULTIPLIER = -1.0
 RIGHT_MOTOR_MULTIPLIER = 1.0
 # Set to True to test the whole ROS/VLA stack without opening the serial
 # port or sending commands to physical motors.
-DRY_RUN                = False
+DRY_RUN = False
 
 
 class RoboclawForMotorsNode(Node):
     def __init__(self):
-        super().__init__('roboclaw_for_motors')
+        super().__init__("roboclaw_for_motors")
 
         self.address = ADDRESS
         self.max_duty_cycle = MAX_DUTY_CYCLE
@@ -45,7 +45,7 @@ class RoboclawForMotorsNode(Node):
         if not DRY_RUN:
             self.connect_roboclaw()
         else:
-            self.get_logger().warn('Roboclaw node running in dry_run mode')
+            self.get_logger().warn("Roboclaw node running in dry_run mode")
 
         self.create_subscription(
             LeftRightFloat32,
@@ -70,16 +70,14 @@ class RoboclawForMotorsNode(Node):
         try:
             from basicmicro import Basicmicro
         except ImportError as exc:
-            raise RuntimeError('Install basicmicro on the robot to use Roboclaw hardware') from exc
+            raise RuntimeError("Install basicmicro on the robot to use Roboclaw hardware") from exc
 
         self.roboclaw = Basicmicro(USB_PORT, BAUDRATE)
         self.connected = bool(self.roboclaw.Open())
         if not self.connected:
-            self.get_logger().warn(
-                f'Failed to open Roboclaw on {USB_PORT} at {BAUDRATE}; motor commands will be ignored'
-            )
+            self.get_logger().warn(f"Failed to open Roboclaw on {USB_PORT} at {BAUDRATE}; motor commands will be ignored")
             return
-        self.get_logger().info(f'Connected to Roboclaw on {USB_PORT}')
+        self.get_logger().info(f"Connected to Roboclaw on {USB_PORT}")
 
     @staticmethod
     def clamp(value, low, high):
@@ -95,7 +93,7 @@ class RoboclawForMotorsNode(Node):
             rc_left = int(duty_left * PERCENT_TO_ROBOCLAW)
             rc_right = int(duty_right * PERCENT_TO_ROBOCLAW)
             if not self.roboclaw.DutyM1M2(self.address, rc_left, rc_right):
-                self.get_logger().warn('Roboclaw did not acknowledge DutyM1M2 command')
+                self.get_logger().warn("Roboclaw did not acknowledge DutyM1M2 command")
 
         out = LeftRightFloat32()
         out.left = float(duty_left)
@@ -114,7 +112,7 @@ class RoboclawForMotorsNode(Node):
         try:
             result = self.roboclaw.GetEncoders(self.address)
         except Exception as exc:
-            self.get_logger().warn(f'Roboclaw encoder read failed: {exc}')
+            self.get_logger().warn(f"Roboclaw encoder read failed: {exc}")
             return None
 
         if not result[0]:
@@ -131,7 +129,7 @@ class RoboclawForMotorsNode(Node):
 
         encoders = self.read_encoder_pair()
         if encoders is None:
-            self.get_logger().warn('Failed to read Roboclaw encoders')
+            self.get_logger().warn("Failed to read Roboclaw encoders")
             return
 
         left, right = encoders
@@ -156,7 +154,7 @@ class RoboclawForMotorsNode(Node):
         if self.connected:
             try:
                 self.roboclaw.DutyM1M2(self.address, 0, 0)
-                if hasattr(self.roboclaw, 'close'):
+                if hasattr(self.roboclaw, "close"):
                     self.roboclaw.close()
             except Exception:
                 pass
@@ -173,5 +171,5 @@ def main(args=None):
         rclpy.shutdown()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
