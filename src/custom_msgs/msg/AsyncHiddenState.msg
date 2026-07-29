@@ -1,0 +1,4 @@
+std_msgs/Header header
+int32 img_seq_num
+
+std_msgs/Float32MultiArray hidden_states
