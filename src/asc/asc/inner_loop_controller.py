@@ -11,7 +11,7 @@ Output:
 
 import numpy as np
 import rclpy
-from asclinic_vla_interfaces.msg import LeftRightFloat32, LeftRightInt32
+from custom_msgs.msg import LeftRightFloat32, LeftRightInt32
 from rclpy.node import Node
 
 

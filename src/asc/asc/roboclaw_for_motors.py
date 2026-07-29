@@ -6,7 +6,7 @@ Everything upstream publishes normalized duty-cycle or velocity messages.
 """
 
 import rclpy
-from asclinic_vla_interfaces.msg import LeftRightFloat32, LeftRightInt32
+from custom_msgs.msg import LeftRightFloat32, LeftRightInt32
 from rclpy.node import Node
 
 PERCENT_TO_ROBOCLAW = 327.67

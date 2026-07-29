@@ -10,7 +10,7 @@ and publishes both a standard `nav_msgs/Odometry` message and a compact
 import math
 
 import rclpy
-from asclinic_vla_interfaces.msg import LeftRightInt32
+from custom_msgs.msg import LeftRightInt32
 from geometry_msgs.msg import Pose2D
 from nav_msgs.msg import Odometry
 from rclpy.node import Node

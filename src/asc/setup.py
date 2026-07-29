@@ -2,7 +2,7 @@ from glob import glob
 
 from setuptools import find_packages, setup
 
-package_name = 'asc_vla'
+package_name = 'asc'
 
 setup(
     name=package_name,
@@ -12,7 +12,7 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
-        ('share/' + package_name, '/launch', glob('launch/*.py'))
+        ('share/' + package_name + '/launch', glob('launch/*.py'))
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -27,11 +27,11 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'camera_capture = asc_vla.asc.camera_capture:main',
-            'odometry = asc_vla.asc.odometry:main',
-            'outer_loop_controller = asc_vla.asc.outer_loop_controller:main',
-            'inner_loop_controller = asc_vla.asc.inner_loop_controller:main',
-            'roboclaw_for_motors = asc_vla.asc.roboclaw_for_motors:main',
+            'camera_capture = asc.camera_capture:main',
+            'odometry = asc.odometry:main',
+            'outer_loop_controller = asc.outer_loop_controller:main',
+            'inner_loop_controller = asc.inner_loop_controller:main',
+            'roboclaw_for_motors = asc.roboclaw_for_motors:main',
         ],
     },
 )

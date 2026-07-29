@@ -11,7 +11,7 @@ to left/right wheel velocity references for the wheel PID controller.
 import math
 
 import rclpy
-from asclinic_vla_interfaces.msg import ActionChunk, LeftRightFloat32
+from custom_msgs.msg import ActionChunk, LeftRightFloat32
 from geometry_msgs.msg import Pose2D
 from rclpy.node import Node
 
