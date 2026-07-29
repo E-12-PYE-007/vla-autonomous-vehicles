@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import os
 from functools import lru_cache
 import numpy as np
 import torch
@@ -23,7 +24,7 @@ from transformers import AutoConfig, AutoImageProcessor, AutoModelForVision2Seq,
 from transformers.modeling_outputs import CausalLMOutputWithPast
 
 
-VLA_PATH = "./AsyncVLA_release"
+VLA_PATH = os.path.expanduser("~/capstone/code/asyncvla/AsyncVLA/AsyncVLA_release")
 RESUME_STEP = 750000
 DEFAULT_GOAL = "Go to the yellow bin"
 DEVICE_TYPE = "cuda"
