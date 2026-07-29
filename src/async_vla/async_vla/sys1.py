@@ -19,7 +19,7 @@ from custom_msgs.msg import ActionChunk, AsyncHiddenState, ImageWithSeqNum
 
 from prismatic.models.small_head import Edge_adapter
 
-SHEAD_PATH = './AsyncVLA_release'
+SHEAD_PATH = "./AsyncVLA_release"
 RESUME_STEP = 750000
 OBS_ENCODING_SIZE = 1024
 MHA_NUM_ATTENTION_HEADS = 4
@@ -27,21 +27,23 @@ MHA_NUM_ATTENTION_LAYERS = 4
 MHA_FF_DIM_FACTOR = 4
 IMAGE_SIZE = (96, 96)
 METRIC_WAYPOINT_SPACING = 0.1  # metres per waypoint unit
-IMAGE_BUFFER_SIZE = 80 # 8 secs worth of data
+IMAGE_BUFFER_SIZE = 80  # 8 secs worth of data
 
 _normalise = transforms.Normalize(
     mean=[0.485, 0.456, 0.406],
     std=[0.229, 0.224, 0.225],
 )
+
+
 class Sys1(Node):
     def __init__(self):
         super().__init__("sys1")
-        self.get_logger().info('[AsyncVLA Sys1] initialising...')
+        self.get_logger().info("[AsyncVLA Sys1] initialising...")
 
         # Load model
         shead, self.device = _load_model(SHEAD_PATH, RESUME_STEP)
         self.inference = Inference(shead, self.device)
-        self.get_logger().info('[AsyncVLA Sys1] Model loaded')
+        self.get_logger().info("[AsyncVLA Sys1] Model loaded")
 
         # Initialise states
         self.bridge = CvBridge()
@@ -52,32 +54,18 @@ class Sys1(Node):
         self.latest_hidden_seq_num = None
 
         # Publishers
-        self.action_chunk_pub = self.create_publisher(
-            ActionChunk, 
-            '/asyncvla/action_chunk', 
-            1
-        )
+        self.action_chunk_pub = self.create_publisher(ActionChunk, "/asyncvla/action_chunk", 1)
 
         # Subscribers
-        self.create_subscription(
-            AsyncHiddenState, 
-            '/asyncvla/hidden_state', 
-            self.hidden_state_callback, 
-            1
-        )
+        self.create_subscription(AsyncHiddenState, "/asyncvla/hidden_state", self.hidden_state_callback, 1)
 
-        self.create_subscription(
-            ImageWithSeqNum, 
-            '/cam', 
-            self.img_callback, 
-            1
-        )
+        self.create_subscription(ImageWithSeqNum, "/cam", self.img_callback, 1)
 
         # Run sys1 at 3Hz
         self.create_timer(1.0 / 3.0, self.timer_callback)
 
     def img_callback(self, msg: ImageWithSeqNum):
-        img = Image.fromarray(self.bridge.imgmsg_to_cv2(msg.img, desired_encoding='rgb8'))
+        img = Image.fromarray(self.bridge.imgmsg_to_cv2(msg.img, desired_encoding="rgb8"))
         processed = _process_image(img, self.device)
 
         # Evict oldest entry before it gets dropped from the deque
@@ -88,12 +76,7 @@ class Sys1(Node):
         self.curr_img = processed
 
     def hidden_state_callback(self, msg: AsyncHiddenState):
-        self.latest_hidden_state = (
-            torch.tensor(msg.hidden_states.data, dtype=torch.float32)
-            .reshape(1, 8, 1024)
-            .to(torch.bfloat16)
-            .to(self.device)
-        )
+        self.latest_hidden_state = torch.tensor(msg.hidden_states.data, dtype=torch.float32).reshape(1, 8, 1024).to(torch.bfloat16).to(self.device)
         self.latest_hidden_seq_num = msg.img_seq_num
 
     def timer_callback(self):
@@ -103,7 +86,7 @@ class Sys1(Node):
         curr_img = self.curr_img
 
         if projected_actions is None or curr_img is None or past_img is None:
-            self.get_logger().warn('[AsyncVLA Sys1] Waiting for hidden state and images...')
+            self.get_logger().warn("[AsyncVLA Sys1] Waiting for hidden state and images...")
             return
 
         poses = self.inference.run(curr_img, past_img, projected_actions)
@@ -117,12 +100,13 @@ class Sys1(Node):
         for t in range(poses.shape[1]):
             pose = Pose2D()
             pose.x = float(poses[0, t, 0]) * METRIC_WAYPOINT_SPACING
-            pose.y = -float(poses[0, t, 1]) * METRIC_WAYPOINT_SPACING #TODO: Confirm the sign flip is correct
+            pose.y = -float(poses[0, t, 1]) * METRIC_WAYPOINT_SPACING  # TODO: Confirm the sign flip is correct
             pose.theta = float(np.arctan2(poses[0, t, 3], poses[0, t, 2]))
             chunk.relative_poses.append(pose)
 
         self.action_chunk_pub.publish(chunk)
-        self.get_logger().info(f'[AsyncVLA Sys1] Published action chunk seq={img_seq_num}')
+        self.get_logger().info(f"[AsyncVLA Sys1] Published action chunk seq={img_seq_num}")
+
 
 class Inference:
     def __init__(self, shead, device):
@@ -135,9 +119,10 @@ class Inference:
             predicted_poses = _delta_to_pose(predicted_delta)
         return predicted_poses.cpu().float().numpy()
 
+
 @lru_cache(maxsize=1)
 def _load_model(shead_path: str, resume_step: int):
-    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     if torch.cuda.is_available():
         torch.cuda.set_device(device)
         torch.cuda.empty_cache()
@@ -149,14 +134,15 @@ def _load_model(shead_path: str, resume_step: int):
         mha_ff_dim_factor=MHA_FF_DIM_FACTOR,
     )
 
-    checkpoint_path = os.path.join(shead_path, f'shead--{resume_step}_checkpoint.pt')
-    state_dict = torch.load(checkpoint_path, map_location='cpu')
-    if any(k.startswith('module.') for k in state_dict):
-        state_dict = {k.replace('module.', '', 1): v for k, v in state_dict.items()}
+    checkpoint_path = os.path.join(shead_path, f"shead--{resume_step}_checkpoint.pt")
+    state_dict = torch.load(checkpoint_path, map_location="cpu")
+    if any(k.startswith("module.") for k in state_dict):
+        state_dict = {k.replace("module.", "", 1): v for k, v in state_dict.items()}
     shead.load_state_dict(state_dict, strict=False)
     shead.to(torch.bfloat16).to(device)
 
     return shead, device
+
 
 def _process_image(img: Image.Image, device: torch.device) -> torch.Tensor:
     tensor = TF.to_tensor(img)
@@ -184,6 +170,7 @@ def _delta_to_pose(delta: torch.Tensor) -> torch.Tensor:
 
     return torch.stack(poses, dim=1)
 
+
 def main(args=None):
     rclpy.init(args=args)
 
@@ -192,6 +179,7 @@ def main(args=None):
 
     sys1_node.destroy_node()
     rclpy.shutdown()
+
 
 if __name__ == "__main__":
     main()

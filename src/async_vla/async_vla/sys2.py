@@ -23,44 +23,36 @@ from transformers import AutoConfig, AutoImageProcessor, AutoModelForVision2Seq,
 from transformers.modeling_outputs import CausalLMOutputWithPast
 
 
-VLA_PATH = './AsyncVLA_release'
+VLA_PATH = "./AsyncVLA_release"
 RESUME_STEP = 750000
-DEFAULT_GOAL = 'Go to the yellow bin'
-DEVICE_TYPE = 'cuda'
+DEFAULT_GOAL = "Go to the yellow bin"
+DEVICE_TYPE = "cuda"
+
 
 class Sys2(Node):
     def __init__(self):
         super().__init__("sys2")
-        self.get_logger().info('[AsyncVLA Sys2] initialising...')
+        self.get_logger().info("[AsyncVLA Sys2] initialising...")
 
         # Load model
         vla, action_proj, device, num_patches, action_tokenizer, processor = _load_model(VLA_PATH, RESUME_STEP)
         self.inference = Inference(vla, action_proj, device, num_patches, action_tokenizer, processor)
-        self.get_logger().info('[AsyncVLA Sys2] Model loaded')
+        self.get_logger().info("[AsyncVLA Sys2] Model loaded")
 
         # Prompt for goal — press Enter for default
-        user_input = input('Enter goal: ').strip()
+        user_input = input("Enter goal: ").strip()
         self.goal_text = user_input if user_input else DEFAULT_GOAL
         self.get_logger().info(f"[AsyncVLA Sys2] Goal set as: '{self.goal_text}'")
 
         # Publishers
-        self.hidden_state_pub = self.create_publisher(
-            AsyncHiddenState, 
-            '/asyncvla/hidden_state', 
-            1
-        )
+        self.hidden_state_pub = self.create_publisher(AsyncHiddenState, "/asyncvla/hidden_state", 1)
 
         # Subscribers
         self.bridge = CvBridge()
-        self.create_subscription(
-            ImageWithSeqNum, 
-            '/cam', 
-            self.img_callback, 
-            1
-        )
+        self.create_subscription(ImageWithSeqNum, "/cam", self.img_callback, 1)
 
     def img_callback(self, msg: ImageWithSeqNum):
-        img = Image.fromarray(self.bridge.imgmsg_to_cv2(msg.img, desired_encoding='rgb8'))
+        img = Image.fromarray(self.bridge.imgmsg_to_cv2(msg.img, desired_encoding="rgb8"))
 
         actions = self.inference.run(img, self.goal_text)
 
@@ -71,7 +63,8 @@ class Sys2(Node):
         hidden_state_msg.hidden_states.data = actions.reshape(-1).astype(np.float32).tolist()
 
         self.hidden_state_pub.publish(hidden_state_msg)
-        self.get_logger().info(f'[AsyncVLA Sys2] Published hidden state for img_seq={hidden_state_msg.img_seq_num}')
+        self.get_logger().info(f"[AsyncVLA Sys2] Published hidden state for img_seq={hidden_state_msg.img_seq_num}")
+
 
 class Inference:
     def __init__(self, vla, action_proj, device, num_patches, action_tokenizer, processor):
@@ -92,37 +85,32 @@ class Inference:
         IGNORE_INDEX = -100
         actions = np.random.rand(8, 4)  # dummy actions for token layout only
 
-        action_chunk_string = (
-            self.action_tokenizer(actions[0])
-            + ''.join(self.action_tokenizer(actions[1:]))
-        )
+        action_chunk_string = self.action_tokenizer(actions[0]) + "".join(self.action_tokenizer(actions[1:]))
 
-        prompt_builder = PurePromptBuilder('openvla')
-        prompt_builder.add_turn('human', f'What action should the robot take to {goal_text}?')
-        prompt_builder.add_turn('gpt', action_chunk_string)
+        prompt_builder = PurePromptBuilder("openvla")
+        prompt_builder.add_turn("human", f"What action should the robot take to {goal_text}?")
+        prompt_builder.add_turn("gpt", action_chunk_string)
 
         tokenizer = self.processor.tokenizer
-        input_ids = torch.tensor(
-            tokenizer(prompt_builder.get_prompt(), add_special_tokens=True).input_ids
-        )
+        input_ids = torch.tensor(tokenizer(prompt_builder.get_prompt(), add_special_tokens=True).input_ids)
         labels = input_ids.clone()
-        labels[:-(len(action_chunk_string) + 1)] = IGNORE_INDEX
+        labels[: -(len(action_chunk_string) + 1)] = IGNORE_INDEX
 
         pixel_values = self.processor.image_processor.apply_transform(img)
 
         input_ids_b = pad_sequence([input_ids], batch_first=True, padding_value=tokenizer.pad_token_id)
         labels_b = pad_sequence([labels], batch_first=True, padding_value=IGNORE_INDEX)
-        input_ids_b = input_ids_b[:, :tokenizer.model_max_length]
-        labels_b = labels_b[:, :tokenizer.model_max_length]
+        input_ids_b = input_ids_b[:, : tokenizer.model_max_length]
+        labels_b = labels_b[:, : tokenizer.model_max_length]
 
         stacked = torch.stack([pixel_values])
         pixel_values_b = torch.cat([stacked, stacked], dim=1)  # duplicate as goal image
 
         return {
-            'pixel_values': pixel_values_b,
-            'input_ids': input_ids_b,
-            'attention_mask': input_ids_b.ne(tokenizer.pad_token_id),
-            'labels': labels_b,
+            "pixel_values": pixel_values_b,
+            "input_ids": input_ids_b,
+            "attention_mask": input_ids_b.ne(tokenizer.pad_token_id),
+            "labels": labels_b,
         }
 
     def _forward(self, batch: dict) -> np.ndarray:
@@ -130,11 +118,11 @@ class Inference:
 
         with torch.no_grad(), torch.autocast(DEVICE_TYPE, dtype=torch.bfloat16):
             output: CausalLMOutputWithPast = self.vla(
-                input_ids=batch['input_ids'].to(self.device),
-                attention_mask=batch['attention_mask'].to(self.device),
-                pixel_values=batch['pixel_values'].to(torch.bfloat16).to(self.device),
+                input_ids=batch["input_ids"].to(self.device),
+                attention_mask=batch["attention_mask"].to(self.device),
+                pixel_values=batch["pixel_values"].to(torch.bfloat16).to(self.device),
                 modality_id=modality_id.to(torch.bfloat16),
-                labels=batch['labels'].to(self.device),
+                labels=batch["labels"].to(self.device),
                 output_hidden_states=True,
                 noisy_actions=None,
                 noisy_action_projector=None,
@@ -147,57 +135,55 @@ class Inference:
                 # proprio_projector=self.pose_projector,
             )
 
-        gt_token_ids = batch['labels'][:, 1:].to(self.device)
+        gt_token_ids = batch["labels"][:, 1:].to(self.device)
         action_mask = get_current_action_mask(gt_token_ids) | get_next_actions_mask(gt_token_ids)
 
-        text_hidden = output.hidden_states[-1][:, self.num_patches:-1]
-        batch_size = batch['input_ids'].shape[0]
-        actions_hidden = (
-            text_hidden[action_mask]
-            .reshape(batch_size, NUM_ACTIONS_CHUNK * ACTION_DIM, -1)
-            .to(torch.bfloat16)
-        )
+        text_hidden = output.hidden_states[-1][:, self.num_patches : -1]
+        batch_size = batch["input_ids"].shape[0]
+        actions_hidden = text_hidden[action_mask].reshape(batch_size, NUM_ACTIONS_CHUNK * ACTION_DIM, -1).to(torch.bfloat16)
 
         with torch.no_grad():
-            projected = self.action_proj.predict_action(
-                actions_hidden.detach(), modality_id.to(torch.bfloat16)
-            )
+            projected = self.action_proj.predict_action(actions_hidden.detach(), modality_id.to(torch.bfloat16))
 
         return projected.detach().to(torch.float32).cpu().numpy()
 
+
 def _remove_ddp_prefix(state_dict: dict) -> dict:
-    return {k.removeprefix('module.'): v for k, v in state_dict.items()}
+    return {k.removeprefix("module."): v for k, v in state_dict.items()}
+
 
 def _load_checkpoint(module_name: str, path: str, step: int) -> dict:
     import os
-    checkpoint_path = os.path.join(path, f'{module_name}--{step}_checkpoint.pt')
-    if not os.path.exists(checkpoint_path) and module_name == 'pose_projector':
-        checkpoint_path = os.path.join(path, f'proprio_projector--{step}_checkpoint.pt')
-    return _remove_ddp_prefix(torch.load(checkpoint_path, map_location='cpu'))
+
+    checkpoint_path = os.path.join(path, f"{module_name}--{step}_checkpoint.pt")
+    if not os.path.exists(checkpoint_path) and module_name == "pose_projector":
+        checkpoint_path = os.path.join(path, f"proprio_projector--{step}_checkpoint.pt")
+    return _remove_ddp_prefix(torch.load(checkpoint_path, map_location="cpu"))
+
 
 @lru_cache(maxsize=1)
 def _load_model(vla_path: str, resume_step: int):
-    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     if torch.cuda.is_available():
         torch.cuda.set_device(device)
         torch.cuda.empty_cache()
 
-    AutoConfig.register('openvla', OpenVLAConfig)
+    AutoConfig.register("openvla", OpenVLAConfig)
     AutoImageProcessor.register(OpenVLAConfig, PrismaticImageProcessor)
     AutoProcessor.register(OpenVLAConfig, PrismaticProcessor)
     AutoModelForVision2Seq.register(OpenVLAConfig, OpenVLAForActionPrediction_MMNv1)
 
     processor = AutoProcessor.from_pretrained(vla_path, trust_remote_code=True)
     vla = AutoModelForVision2Seq.from_pretrained(
-        vla_path, torch_dtype=torch.bfloat16, low_cpu_mem_usage=True,
+        vla_path,
+        torch_dtype=torch.bfloat16,
+        low_cpu_mem_usage=True,
     ).to(device)
     vla.vision_backbone.set_num_images_in_input(2)
     vla.to(dtype=torch.bfloat16, device=device)
 
-    action_proj = Proj_Actiontokens(
-        input_dim=vla.llm_dim, hidden_dim=vla.llm_dim, action_dim=1024
-    )
-    action_proj.load_state_dict(_load_checkpoint('action_proj', vla_path, resume_step))
+    action_proj = Proj_Actiontokens(input_dim=vla.llm_dim, hidden_dim=vla.llm_dim, action_dim=1024)
+    action_proj.load_state_dict(_load_checkpoint("action_proj", vla_path, resume_step))
     action_proj = action_proj.to(torch.bfloat16).to(device)
 
     # TODO: uncomment to load pose_projector and enable proprio conditioning (see _forward TODO).
@@ -217,6 +203,7 @@ def _load_model(vla_path: str, resume_step: int):
 
     return vla, action_proj, device, num_patches, action_tokenizer, processor
 
+
 def main(args=None):
     rclpy.init(args=args)
 
@@ -225,6 +212,7 @@ def main(args=None):
 
     sys2_node.destroy_node()
     rclpy.shutdown()
+
 
 if __name__ == "__main__":
     main()
