@@ -19,6 +19,7 @@ from custom_msgs.msg import ActionChunk, AsyncHiddenState, ImageWithSeqNum
 
 from prismatic.models.small_head import Edge_adapter
 
+
 SHEAD_PATH = "./AsyncVLA_release"
 RESUME_STEP = 750000
 OBS_ENCODING_SIZE = 1024
@@ -28,6 +29,7 @@ MHA_FF_DIM_FACTOR = 4
 IMAGE_SIZE = (96, 96)
 METRIC_WAYPOINT_SPACING = 0.1  # metres per waypoint unit
 IMAGE_BUFFER_SIZE = 80  # 8 secs worth of data
+
 
 _normalise = transforms.Normalize(
     mean=[0.485, 0.456, 0.406],
