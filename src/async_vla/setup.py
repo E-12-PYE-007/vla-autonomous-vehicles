@@ -1,3 +1,5 @@
+from glob import glob
+
 from setuptools import find_packages, setup
 
 package_name = 'async_vla'
@@ -10,6 +12,7 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
+        ('share/' + package_name + '/launch', glob('launch/*.py')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -24,6 +27,8 @@ setup(
     },
     entry_points={
         'console_scripts': [
+            'sys2 = async_vla.sys2:main',
+            'sys1 = async_vla.sys1:main',
         ],
     },
 )
