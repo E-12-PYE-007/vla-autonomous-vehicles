@@ -48,7 +48,7 @@ def generate_launch_description():
             Node(
                 package="asc",
                 executable="odometry",
-                name="encoder_odometry",
+                name="odometry",
                 output="screen",
                 parameters=[{"use_sim": True}],
             ),
@@ -56,7 +56,7 @@ def generate_launch_description():
             Node(
                 package="asc",
                 executable="outer_loop_controller",
-                name="odom_action_chunk_tracker",
+                name="outer_loop_controller",
                 output="screen",
                 parameters=[{"use_sim": True}],
             ),
