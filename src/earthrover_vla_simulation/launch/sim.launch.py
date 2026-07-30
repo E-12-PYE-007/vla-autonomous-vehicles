@@ -53,7 +53,8 @@ def launch_with_custom_world(context):
         arguments=[
             '-world', world_name,
             '-name', robotXacroName,
-            '-topic', 'robot_description'
+            '-topic', 'robot_description',
+            '-x', '-2', '-y', '0', '-z', '0.1'
         ],
         output='screen',
     )
