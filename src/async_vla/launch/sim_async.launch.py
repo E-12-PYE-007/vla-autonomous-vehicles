@@ -71,7 +71,7 @@ def generate_launch_description():
                 executable="sys2",
                 name="sys2",
                 output="screen",
-                parameters=[{"goal": LaunchConfiguration("goal"), "use_sim": True}],
+                parameters=[{"goal": LaunchConfiguration("goal")}, {"use_sim": True}],
             ),
             Node(
                 package="async_vla",
