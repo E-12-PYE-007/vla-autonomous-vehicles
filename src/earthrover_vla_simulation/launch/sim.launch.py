@@ -42,7 +42,7 @@ def launch_with_custom_world(context):
     gazeboLaunch = IncludeLaunchDescription(
         gazebo_rosPackageLaunch,
         launch_arguments={
-            'gz_args': f'-r -v 4 {pathWorldFile}',
+            'gz_args': f'-r -v 1 {pathWorldFile}',
             'on_exit_shutdown': 'true'
         }.items()
     )
@@ -55,7 +55,7 @@ def launch_with_custom_world(context):
             '-name', robotXacroName,
             '-topic', 'robot_description'
         ],
-        output = 'screen',
+        output='screen',
     )
 
     # Robot state publisher node
