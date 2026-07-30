@@ -9,7 +9,7 @@ CONDA_DIR="$HOME/miniconda3"
 BASE_DIR="$HOME/capstone/code/ticvla"
 TICVLA_DIR="$BASE_DIR/TIC-VLA"
 MODEL_DIR="$BASE_DIR/InternVL3-1B"
-CHECKPOINT_DIR="$BASE_DIR/checkpoint.ckpt"
+CHECKPOINT_DIR="$BASE_DIR/TIC-VLA-model.ckpt"
 
 
 # --- Step 1: Initialise git submodules ---
@@ -83,10 +83,10 @@ from huggingface_hub import hf_hub_download
 import os, shutil
 path = hf_hub_download(
     repo_id="handsomeYun/TIC-VLA",
-    filename="checkpoint.ckpt",
+    filename="TIC-VLA-model.ckpt",
     repo_type="dataset",
 )
-dest = os.path.expanduser("~/capstone/code/ticvla/checkpoint.ckpt")
+dest = os.path.expanduser("~/capstone/code/ticvla/TIC-VLA-model.ckpt")
 shutil.copy(path, dest)
 print(f"TIC-VLA checkpoint saved to {dest}")
 EOF
