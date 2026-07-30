@@ -1,3 +1,4 @@
+import os
 from glob import glob
 from setuptools import find_packages, setup
 
@@ -12,6 +13,7 @@ setup(
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
         ('share/' + package_name + '/launch', glob('launch/*.py')),
+        (os.path.join('lib', package_name), glob('scripts/*')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -25,10 +27,6 @@ setup(
         ],
     },
     entry_points={
-        'console_scripts': [
-            'image_processing = tic_vla.image_processing:main',
-            'sys1 = tic_vla.sys1:main',
-            'sys2 = tic_vla.sys2:main',
-        ],
+        'console_scripts': [],
     },
 )

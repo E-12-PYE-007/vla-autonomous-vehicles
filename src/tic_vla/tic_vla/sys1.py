@@ -14,7 +14,7 @@ from custom_msgs.msg import ActionChunk, TicKVCache, TicImageTokens, TicLatencyM
 from ticvla.models.ticvla import ActionExpert
 
 
-CHECKPOINT_PATH       = os.path.expanduser("~/capstone/code/ticvla/checkpoint.ckpt")
+CHECKPOINT_PATH       = os.path.expanduser("~/capstone/code/ticvla/TIC-VLA-model.ckpt")
 ACTION_HORIZON_STEPS  = 30            # 30 steps at 10 Hz = 3 seconds
 VLM_HIDDEN_SIZE       = 896           # Qwen2.5-0.5B hidden dim (InternVL3-1B)
 ACTION_EXPERT_HIDDEN  = 512
@@ -106,7 +106,7 @@ class Sys1(Node):
         """Store latest current-frame visual tokens from sys2."""
         self.image_tokens = (
             torch.tensor(list(msg.tokens.data), dtype=torch.float32)
-            .reshape(1, NUM_IMAGE_TOKENS, VLM_HIDDEN_SIZE)
+            .reshape(1, -1, VLM_HIDDEN_SIZE)
             .to(torch.bfloat16)
             .to(self.device)
         )
@@ -152,10 +152,6 @@ class Sys1(Node):
         self.latency_pub.publish(latency_msg)
 
         if kv_values is None or image_tokens is None:
-            self.get_logger().warn(
-                "Waiting for KV cache and image tokens from sys2",
-                throttle_duration_sec=2.0,
-            )
             return
 
         # State tensor: [vx, vy, omega_z, dx, dy, dt] → (1, 6, 1)

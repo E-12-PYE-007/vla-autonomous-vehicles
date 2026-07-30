@@ -1,0 +1,6 @@
+#!/home/vla-cap/miniconda3/envs/tic-vla/bin/python3
+import sys
+sys.path = [p for p in sys.path if '/miniconda3/envs/' not in p or '/tic-vla/' in p]
+sys.path.insert(0, '/home/vla-cap/capstone/code/ticvla/TIC-VLA')
+from tic_vla.sys1 import main
+sys.exit(main())

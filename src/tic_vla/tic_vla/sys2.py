@@ -36,7 +36,7 @@ from ticvla.models.ticvla import TICVLA
 
 
 VLM_PATH             = os.path.expanduser("~/capstone/code/ticvla/InternVL3-1B")
-CHECKPOINT_PATH      = os.path.expanduser("~/capstone/code/ticvla/checkpoint.ckpt")
+CHECKPOINT_PATH      = os.path.expanduser("~/capstone/code/ticvla/TIC-VLA-model.ckpt")
 ACTION_HORIZON_STEPS = 30
 IMAGE_BUFFER_SEC     = 12.0           # covers 9s offset + margin
 FRAME_OFFSETS_SEC    = [0.0, 3.0, 6.0, 9.0]
@@ -57,9 +57,8 @@ class Sys2(Node):
         
         self.model = self.load_model()
 
-        # Get language instruction
-        user_input = input("Enter instruction: ").strip()
-        self.instruction = user_input if user_input else DEFAULT_INSTRUCTION
+        self.declare_parameter("instruction", DEFAULT_INSTRUCTION)
+        self.instruction = self.get_parameter("instruction").get_parameter_value().string_value
         self.get_logger().info(f'Instruction: "{self.instruction}"')
 
         # Rolling image buffer: deque of (stamp_sec, pixel_values cpu bfloat16)

@@ -32,6 +32,11 @@ def generate_launch_description():
                 default_value="unempty_office_square.sdf",
                 description="Gazebo world file (relative to earthrover_vla_simulation/worlds/templates).",
             ),
+            DeclareLaunchArgument(
+                "instruction",
+                default_value="Go to the yellow bin.",
+                description="Language instruction for TIC-VLA.",
+            ),
             # --- Simulator ---
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(earthrover_bringup_launch),
@@ -61,18 +66,21 @@ def generate_launch_description():
                 executable="image_processing",
                 name="tic_vla_image_processing",
                 output="screen",
+                parameters=[{"use_sim": True}],
             ),
             Node(
                 package="tic_vla",
                 executable="sys2",
                 name="sys2",
                 output="screen",
+                parameters=[{"instruction": LaunchConfiguration("instruction")}, {"use_sim": True}],
             ),
             Node(
                 package="tic_vla",
                 executable="sys1",
                 name="sys1",
                 output="screen",
+                parameters=[{"use_sim": True}],
             ),
         ]
     )
