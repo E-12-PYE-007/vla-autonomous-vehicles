@@ -62,14 +62,14 @@
         <visual name='visual'>
           <geometry>
             <mesh>
-              <uri>custom_worlds/rooms/Office-Medium_Square.obj</uri>
+              <uri>../custom_worlds/rooms/Office-Medium_Square.obj</uri>
             </mesh>
           </geometry>
         </visual>
         <collision name='collision'>
           <geometry>
             <mesh>
-              <uri>custom_worlds/rooms/Office-Medium_Square.obj</uri>
+              <uri>../custom_worlds/rooms/Office-Medium_Square.obj</uri>
             </mesh>
           </geometry>
         </collision>
