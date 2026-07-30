@@ -35,6 +35,11 @@ def generate_launch_description():
                 default_value="unempty_office_square.sdf",
                 description="Gazebo world file (relative to earthrover_vla_simulation/worlds/templates).",
             ),
+            DeclareLaunchArgument(
+                "goal",
+                default_value="Go to the yellow bin",
+                description="Language goal for the VLA.",
+            ),
             # --- Simulator ---
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(earthrover_bringup_launch),
@@ -66,12 +71,14 @@ def generate_launch_description():
                 executable="sys2",
                 name="sys2",
                 output="screen",
+                parameters=[{"goal": LaunchConfiguration("goal"), "use_sim": True}],
             ),
             Node(
                 package="async_vla",
                 executable="sys1",
                 name="sys1",
                 output="screen",
+                parameters=[{"use_sim": True}],
             ),
         ]
     )

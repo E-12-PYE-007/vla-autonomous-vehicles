@@ -8,19 +8,19 @@ import numpy as np
 import torch
 import torchvision.transforms as transforms
 import torchvision.transforms.functional as TF
-from PIL import Image
+from PIL import Image as PILImage
 
 import rclpy
 from cv_bridge import CvBridge
 from geometry_msgs.msg import Pose2D
 from rclpy.node import Node
-
+from sensor_msgs.msg import Image
 from custom_msgs.msg import ActionChunk, AsyncHiddenState, ImageWithSeqNum
 
 from prismatic.models.small_head import Edge_adapter
 
 
-SHEAD_PATH = "./AsyncVLA_release"
+SHEAD_PATH = "/home/vla-cap/capstone/code/asyncvla/AsyncVLA/AsyncVLA_release"
 RESUME_STEP = 750000
 OBS_ENCODING_SIZE = 1024
 MHA_NUM_ATTENTION_HEADS = 4
@@ -54,6 +54,10 @@ class Sys1(Node):
         self.img_buffer_keys = deque(maxlen=IMAGE_BUFFER_SIZE)
         self.latest_hidden_state = None
         self.latest_hidden_seq_num = None
+        self._sim_seq_num = 0
+
+        self.declare_parameter("use_sim", False)
+        use_sim = bool(self.get_parameter("use_sim").value)
 
         # Publishers
         self.action_chunk_pub = self.create_publisher(ActionChunk, "/asyncvla/action_chunk", 1)
@@ -61,13 +65,25 @@ class Sys1(Node):
         # Subscribers
         self.create_subscription(AsyncHiddenState, "/asyncvla/hidden_state", self.hidden_state_callback, 1)
 
-        self.create_subscription(ImageWithSeqNum, "/cam", self.img_callback, 1)
+        if use_sim:
+            self.create_subscription(Image, "/cam", self.sim_img_callback, 1)
+        else:
+            self.create_subscription(ImageWithSeqNum, "/cam", self.img_callback, 1)
 
         # Run sys1 at 3Hz
         self.create_timer(1.0 / 3.0, self.timer_callback)
+        self.get_logger().info("[AsyncVLA Sys1] Triggering main control loop...")
+
+    def sim_img_callback(self, msg: Image):
+        wrapped = ImageWithSeqNum()
+        wrapped.header = msg.header
+        wrapped.img = msg
+        wrapped.img_seq_num = self._sim_seq_num
+        self._sim_seq_num += 1
+        self.img_callback(wrapped)
 
     def img_callback(self, msg: ImageWithSeqNum):
-        img = Image.fromarray(self.bridge.imgmsg_to_cv2(msg.img, desired_encoding="rgb8"))
+        img = PILImage.fromarray(self.bridge.imgmsg_to_cv2(msg.img, desired_encoding="rgb8"))
         processed = _process_image(img, self.device)
 
         # Evict oldest entry before it gets dropped from the deque
@@ -88,7 +104,6 @@ class Sys1(Node):
         curr_img = self.curr_img
 
         if projected_actions is None or curr_img is None or past_img is None:
-            self.get_logger().warn("[AsyncVLA Sys1] Waiting for hidden state and images...")
             return
 
         poses = self.inference.run(curr_img, past_img, projected_actions)
@@ -146,7 +161,7 @@ def _load_model(shead_path: str, resume_step: int):
     return shead, device
 
 
-def _process_image(img: Image.Image, device: torch.device) -> torch.Tensor:
+def _process_image(img: PILImage.Image, device: torch.device) -> torch.Tensor:
     tensor = TF.to_tensor(img)
     tensor = TF.resize(tensor, list(IMAGE_SIZE)).unsqueeze(0)
     return _normalise(tensor).to(device).to(torch.bfloat16)

@@ -4,12 +4,13 @@ import os
 from functools import lru_cache
 import numpy as np
 import torch
-from PIL import Image
+from PIL import Image as PILImage
 from torch.nn.utils.rnn import pad_sequence
 
 import rclpy
 from cv_bridge import CvBridge
 from rclpy.node import Node
+from sensor_msgs.msg import Image
 from custom_msgs.msg import AsyncHiddenState, ImageWithSeqNum
 
 from prismatic.extern.hf.configuration_prismatic import OpenVLAConfig
@@ -40,20 +41,34 @@ class Sys2(Node):
         self.inference = Inference(vla, action_proj, device, num_patches, action_tokenizer, processor)
         self.get_logger().info("[AsyncVLA Sys2] Model loaded")
 
-        # Prompt for goal — press Enter for default
-        user_input = input("Enter goal: ").strip()
-        self.goal_text = user_input if user_input else DEFAULT_GOAL
+        self.declare_parameter("goal", DEFAULT_GOAL)
+        self.goal_text = self.get_parameter("goal").get_parameter_value().string_value
         self.get_logger().info(f"[AsyncVLA Sys2] Goal set as: '{self.goal_text}'")
+
+        self.declare_parameter("use_sim", False)
+        use_sim = bool(self.get_parameter("use_sim").value)
+        self._sim_seq_num = 0
 
         # Publishers
         self.hidden_state_pub = self.create_publisher(AsyncHiddenState, "/asyncvla/hidden_state", 1)
 
         # Subscribers
         self.bridge = CvBridge()
-        self.create_subscription(ImageWithSeqNum, "/cam", self.img_callback, 1)
+        if use_sim:
+            self.create_subscription(Image, "/cam", self.sim_img_callback, 1)
+        else:
+            self.create_subscription(ImageWithSeqNum, "/cam", self.img_callback, 1)
+
+    def sim_img_callback(self, msg: Image):
+        wrapped = ImageWithSeqNum()
+        wrapped.header = msg.header
+        wrapped.img = msg
+        wrapped.img_seq_num = self._sim_seq_num
+        self._sim_seq_num += 1
+        self.img_callback(wrapped)
 
     def img_callback(self, msg: ImageWithSeqNum):
-        img = Image.fromarray(self.bridge.imgmsg_to_cv2(msg.img, desired_encoding="rgb8"))
+        img = PILImage.fromarray(self.bridge.imgmsg_to_cv2(msg.img, desired_encoding="rgb8"))
 
         actions = self.inference.run(img, self.goal_text)
 
@@ -78,11 +93,11 @@ class Inference:
         # TODO: uncomment and pass pose_projector here when enabling proprio conditioning
         # self.pose_projector = pose_projector
 
-    def run(self, img: Image.Image, goal_text: str) -> np.ndarray:
+    def run(self, img: PILImage.Image, goal_text: str) -> np.ndarray:
         batch = self._prepare_batch(img, goal_text)
         return self._forward(batch)
 
-    def _prepare_batch(self, img: Image.Image, goal_text: str) -> dict:
+    def _prepare_batch(self, img: PILImage.Image, goal_text: str) -> dict:
         IGNORE_INDEX = -100
         actions = np.random.rand(8, 4)  # dummy actions for token layout only
 
