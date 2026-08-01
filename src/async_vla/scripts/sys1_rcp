@@ -1,0 +1,6 @@
+#!/usr/bin/env python3
+import sys
+sys.path = [p for p in sys.path if '/miniconda3/envs/' not in p or '/asyncvla/' in p]
+sys.path.insert(0, '/home/student.unimelb.edu.au/lyamamoto/capstone/code/asyncvla/AsyncVLA')
+from async_vla.sys1 import main
+sys.exit(main())
