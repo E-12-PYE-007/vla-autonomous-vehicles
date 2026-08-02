@@ -54,8 +54,8 @@ def generate_launch_description():
             ),
             Node(
                 package="asc",
-                executable="outer_loop_controller",
-                name="odom_action_chunk_tracker",
+                executable="pure_pursuit_controller",
+                name="pure_pursuit_controller",
                 output="screen",
                 parameters=[{"use_sim": True}],
             ),
