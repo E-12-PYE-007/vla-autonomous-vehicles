@@ -87,12 +87,22 @@ def launch_with_custom_world(context):
         output='screen'
     )
 
+    # Stamps sequence numbers onto camera frames so /cam carries the same message type
+    # in sim as it does on the robot, where camera_capture does the numbering.
+    cam_seq_bridge_cmd = Node(
+        package='earthrover_vla_simulation',
+        executable='cam_seq_bridge.py',
+        name='cam_seq_bridge',
+        output='screen'
+    )
+
     # Return all the nodes to be included in the launch obj
     return[
         gazeboLaunch,
         spawnModelNodeGazebo,
         nodeRobotStatePublisher,
-        state_gazebo_ros_bridge_cmd
+        state_gazebo_ros_bridge_cmd,
+        cam_seq_bridge_cmd
     ]
 
 

@@ -58,7 +58,6 @@ def launch_setup(context, *args, **kwargs):
             parameters=[
                 {"vla_path": vla_path},
                 {"goal": LaunchConfiguration("goal")},
-                {"use_sim": use_sim},
             ],
         ),
         # Edge adapter — subscribes /asyncvla/hidden_state + /cam,
@@ -68,7 +67,7 @@ def launch_setup(context, *args, **kwargs):
             executable=f"sys1_{device}",
             name="sys1",
             output="screen",
-            parameters=[{"shead_path": vla_path}, {"use_sim": use_sim}],
+            parameters=[{"shead_path": vla_path}],
         ),
     ]
 

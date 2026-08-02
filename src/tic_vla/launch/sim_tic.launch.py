@@ -89,7 +89,6 @@ def launch_setup(context, *args, **kwargs):
             executable=f"image_processing_{device}",
             name="tic_vla_image_processing",
             output="screen",
-            parameters=[{"use_sim": True}],
         ),
         Node(
             package="tic_vla",
@@ -98,7 +97,6 @@ def launch_setup(context, *args, **kwargs):
             output="screen",
             parameters=[
                 {"instruction": LaunchConfiguration("goal")},
-                {"use_sim": True},
                 {"vlm_path": vlm_path, "checkpoint_path": checkpoint_path},
             ],
         ),
@@ -107,7 +105,7 @@ def launch_setup(context, *args, **kwargs):
             executable=f"sys1_{device}",
             name="sys1",
             output="screen",
-            parameters=[{"use_sim": True}, {"checkpoint_path": checkpoint_path}],
+            parameters=[{"checkpoint_path": checkpoint_path}],
         ),
     ]
 

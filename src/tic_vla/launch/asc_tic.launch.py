@@ -62,7 +62,6 @@ def launch_setup(context, *args, **kwargs):
             executable=f"image_processing_{device}",
             name="tic_vla_image_processing",
             output="screen",
-            parameters=[{"use_sim": use_sim}],
         ),
         # VLM backbone — subscribes /tic_vla/pixel_values, publishes kv_cache + image_tokens
         Node(

@@ -27,6 +27,10 @@
   <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>tf2_msgs</exec_depend>
 
+  <!-- cam_seq_bridge: republishes /cam_raw as custom_msgs/ImageWithSeqNum on /cam -->
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>custom_msgs</exec_depend>
+
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
 

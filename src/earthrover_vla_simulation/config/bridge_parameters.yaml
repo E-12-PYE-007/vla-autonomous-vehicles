@@ -32,8 +32,10 @@
   gz_type_name:     "gz.msgs.Twist"
   direction:        "ROS_TO_GZ"
 
-# gz topic published by camera sensor
-- ros_topic_name:   "/cam"
+# gz topic published by camera sensor. Lands on /cam_raw, not /cam: ros_gz_bridge can
+# only emit standard ROS types, and the inference nodes expect custom_msgs/ImageWithSeqNum
+# on /cam. cam_seq_bridge adds the sequence number and republishes.
+- ros_topic_name:   "/cam_raw"
   gz_topic_name:    "/cam"
   ros_type_name:    "sensor_msgs/msg/Image"
   gz_type_name:     "gz.msgs.Image"

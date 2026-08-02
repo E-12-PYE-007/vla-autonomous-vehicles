@@ -84,7 +84,6 @@ def launch_setup(context, *args, **kwargs):
             output="screen",
             parameters=[
                 {"goal": LaunchConfiguration("goal")},
-                {"use_sim": True},
                 {"vla_path": vla_path},
             ],
         ),
@@ -93,7 +92,7 @@ def launch_setup(context, *args, **kwargs):
             executable=f"sys1_{device}",
             name="sys1",
             output="screen",
-            parameters=[{"use_sim": True}, {"shead_path": vla_path}],
+            parameters=[{"shead_path": vla_path}],
         ),
     ]
 

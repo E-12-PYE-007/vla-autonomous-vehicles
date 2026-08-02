@@ -21,6 +21,12 @@ install(
 # Install world generation python package to site-packages so it is accessible to other ROS packages.
 ament_python_install_package(world_generation)
 
+# Sim-side counterpart of asc/camera_capture: stamps /cam_raw with sequence numbers.
+install(PROGRAMS
+  scripts/cam_seq_bridge.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   # the following line skips the linter which checks for copyrights

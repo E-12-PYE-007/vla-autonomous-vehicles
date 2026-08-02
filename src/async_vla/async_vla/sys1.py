@@ -14,9 +14,7 @@ import rclpy
 from cv_bridge import CvBridge
 from geometry_msgs.msg import Pose2D
 from rclpy.node import Node
-from sensor_msgs.msg import Image
 from custom_msgs.msg import ActionChunk, AsyncHiddenState, ImageWithSeqNum
-from async_vla.frame_id import sim_seq_num
 
 from prismatic.models.small_head import Edge_adapter
 
@@ -58,30 +56,16 @@ class Sys1(Node):
         self.latest_hidden_state = None
         self.latest_hidden_seq_num = None
 
-        self.declare_parameter("use_sim", False)
-        use_sim = bool(self.get_parameter("use_sim").value)
-
         # Publishers
         self.action_chunk_pub = self.create_publisher(ActionChunk, "/asyncvla/action_chunk", 1)
 
         # Subscribers
         self.create_subscription(AsyncHiddenState, "/asyncvla/hidden_state", self.hidden_state_callback, 1)
-
-        if use_sim:
-            self.create_subscription(Image, "/cam", self.sim_img_callback, 1)
-        else:
-            self.create_subscription(ImageWithSeqNum, "/cam", self.img_callback, 1)
+        self.create_subscription(ImageWithSeqNum, "/cam", self.img_callback, 1)
 
         # Run sys1 at 3Hz
         self.create_timer(1.0 / 3.0, self.timer_callback)
         self.get_logger().info("[AsyncVLA Sys1] Triggering main control loop...")
-
-    def sim_img_callback(self, msg: Image):
-        wrapped = ImageWithSeqNum()
-        wrapped.header = msg.header
-        wrapped.img = msg
-        wrapped.img_seq_num = sim_seq_num(msg.header)
-        self.img_callback(wrapped)
 
     def img_callback(self, msg: ImageWithSeqNum):
         img = PILImage.fromarray(self.bridge.imgmsg_to_cv2(msg.img, desired_encoding="rgb8"))
