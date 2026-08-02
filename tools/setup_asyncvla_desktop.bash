@@ -1,14 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Desktop First-Time Setup — AsyncVLA
-# Run from ~/capstone/code/asyncvla on the desktop machine.
-# Prerequisite: AsyncVLA repo already cloned at ~/capstone/code/asyncvla/AsyncVLA
+# First-Time Setup — AsyncVLA
+#
+# Prerequisite: AsyncVLA repo already cloned at $BASE_DIR/AsyncVLA
+#
+# BASE_DIR defaults to ~/capstone/code/asyncvla. Override it for machines that keep the
+# models elsewhere — on rcp the home filesystem is too small, so use /vla_storage:
+#   ASYNCVLA_BASE_DIR=/vla_storage/capstone/code/asyncvla bash tools/setup_asyncvla_desktop.bash
 
 CONDA_DIR="$HOME/miniconda3"
-BASE_DIR="$HOME/capstone/code/asyncvla"
+BASE_DIR="${ASYNCVLA_BASE_DIR:-$HOME/capstone/code/asyncvla}"
 ASYNCVLA_DIR="$BASE_DIR/AsyncVLA"
 RELEASE_DIR="$ASYNCVLA_DIR/AsyncVLA_release"
+
+echo "Installing AsyncVLA under: $BASE_DIR"
 
 
 # --- Step 1: Initialise git submodules ---
@@ -53,6 +59,10 @@ conda activate asyncvla
 
 pip install numpy==1.26.4 torch==2.2.0 torchvision==0.17.0 torchaudio==2.2.0
 
+# cv_bridge needs cv2. Pin below 5 — newer opencv requires numpy>=2, which breaks
+# AsyncVLA's numpy==1.26.4 pin.
+pip install opencv-python-headless==4.11.0.86
+
 cd "$ASYNCVLA_DIR"
 pip install -e .
 
@@ -70,12 +80,23 @@ else
     huggingface-cli download NHirose/AsyncVLA_release --local-dir ./AsyncVLA_release
 fi
 
+# The download is resumable — if it was interrupted, re-run this script rather than
+# deleting the directory, or the partial blobs are discarded and it starts over.
+if find "$RELEASE_DIR" -name '*.incomplete' 2>/dev/null | grep -q .; then
+    echo ""
+    echo "  WARNING: incomplete downloads remain in $RELEASE_DIR."
+    echo "  Re-run this script to resume. A truncated download shows up later as"
+    echo "  'KeyError: OpenVLAConfig' when the nodes start."
+fi
+
 
 # --- Done ---
 echo ""
 echo "Setup complete. To run AsyncVLA inference nodes:"
 echo "  conda activate asyncvla"
 echo "  source /opt/ros/humble/setup.bash"
-echo "  export PYTHONPATH=\$CONDA_PREFIX/lib/python3.10/site-packages:\$PYTHONPATH"
-echo "  source ~/capstone/code/vla-autonomous-vehicles/install/setup.bash"
-echo "  ros2 launch async_vla asc_async.launch.py"
+echo "  source ~/capstone/vla-autonomous-vehicles/install/setup.bash"
+echo "  ros2 launch async_vla asc_async_rcp.launch.py   # or asc_async_dsk.launch.py"
+echo ""
+echo "Model paths are set by the launch file — update the path constants at the top of"
+echo "the launch file if you installed somewhere other than $BASE_DIR."

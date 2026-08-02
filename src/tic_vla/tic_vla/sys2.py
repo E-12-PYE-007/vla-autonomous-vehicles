@@ -35,12 +35,9 @@ from custom_msgs.msg import TicKVCache, TicImageTokens, TicPixelValues
 from ticvla.models.ticvla import TICVLA
 
 
-VLM_PATH             = os.path.expanduser("~/capstone/code/ticvla/InternVL3-1B")
-CHECKPOINT_PATH      = os.path.expanduser("~/capstone/code/ticvla/TIC-VLA-model.ckpt")
 ACTION_HORIZON_STEPS = 30
 IMAGE_BUFFER_SEC     = 12.0           # covers 9s offset + margin
 FRAME_OFFSETS_SEC    = [0.0, 3.0, 6.0, 9.0]
-DEFAULT_INSTRUCTION  = "Go to the yelow bin."
 DEVICE_TYPE          = "cuda"
 IMAGE_INPUT_SIZE     = 448
 KV_NUM_HEADS         = 2              # InternVL3-1B last-layer KV heads
@@ -54,10 +51,15 @@ class Sys2(Node):
         self.get_logger().info("[TIC-VLA Sys2] Initialising...")
 
         self.device = torch.device(DEVICE_TYPE)
-        
+
+        self.declare_parameter("vlm_path", "")
+        self.declare_parameter("checkpoint_path", "")
+        self.vlm_path = self.get_parameter("vlm_path").get_parameter_value().string_value
+        self.checkpoint_path = self.get_parameter("checkpoint_path").get_parameter_value().string_value
+
         self.model = self.load_model()
 
-        self.declare_parameter("instruction", DEFAULT_INSTRUCTION)
+        self.declare_parameter("instruction", "")
         self.instruction = self.get_parameter("instruction").get_parameter_value().string_value
         self.get_logger().info(f'Instruction: "{self.instruction}"')
 
@@ -283,16 +285,16 @@ class Sys2(Node):
     def load_model(self):
         """Load TICVLA VLM backbone from checkpoint."""
         model = TICVLA(
-            model_path=VLM_PATH,
+            model_path=self.vlm_path,
             action_horizon_steps=ACTION_HORIZON_STEPS,
             train_vlm=False,
         )
-        if os.path.exists(CHECKPOINT_PATH):
-            model.load_vlm_checkpoint(CHECKPOINT_PATH)
-            self.get_logger().info(f"VLM weights loaded from {CHECKPOINT_PATH}")
+        if os.path.exists(self.checkpoint_path):
+            model.load_vlm_checkpoint(self.checkpoint_path)
+            self.get_logger().info(f"VLM weights loaded from {self.checkpoint_path}")
         else:
             self.get_logger().warn(
-                f"Checkpoint not found at {CHECKPOINT_PATH} — using base InternVL3-1B weights"
+                f"Checkpoint not found at {self.checkpoint_path} — using base InternVL3-1B weights"
             )
         return model.to(self.device).eval()
 

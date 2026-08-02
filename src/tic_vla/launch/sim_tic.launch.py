@@ -15,6 +15,9 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
+VLM_PATH = "/vla_storage/capstone/code/ticvla/InternVL3-1B"
+CHECKPOINT_PATH = "/vla_storage/capstone/code/ticvla/TIC-VLA-model.ckpt"
+
 
 def generate_launch_description():
     worldfile = LaunchConfiguration("worldfile")
@@ -33,7 +36,7 @@ def generate_launch_description():
                 description="Gazebo world file (relative to earthrover_vla_simulation/worlds/templates).",
             ),
             DeclareLaunchArgument(
-                "instruction",
+                "goal",
                 default_value="Go to the yellow bin.",
                 description="Language instruction for TIC-VLA.",
             ),
@@ -63,24 +66,28 @@ def generate_launch_description():
             # --- TIC-VLA inference nodes ---
             Node(
                 package="tic_vla",
-                executable="image_processing",
+                executable="image_processing_rcp",
                 name="tic_vla_image_processing",
                 output="screen",
                 parameters=[{"use_sim": True}],
             ),
             Node(
                 package="tic_vla",
-                executable="sys2",
+                executable="sys2_rcp",
                 name="sys2",
                 output="screen",
-                parameters=[{"instruction": LaunchConfiguration("instruction")}, {"use_sim": True}],
+                parameters=[
+                    {"instruction": LaunchConfiguration("goal")},
+                    {"use_sim": True},
+                    {"vlm_path": VLM_PATH, "checkpoint_path": CHECKPOINT_PATH},
+                ],
             ),
             Node(
                 package="tic_vla",
-                executable="sys1",
+                executable="sys1_rcp",
                 name="sys1",
                 output="screen",
-                parameters=[{"use_sim": True}],
+                parameters=[{"use_sim": True}, {"checkpoint_path": CHECKPOINT_PATH}],
             ),
         ]
     )

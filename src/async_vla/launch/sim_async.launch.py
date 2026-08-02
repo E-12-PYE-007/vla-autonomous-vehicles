@@ -19,6 +19,9 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
+VLA_PATH = "/vla_storage/capstone/code/asyncvla/AsyncVLA/AsyncVLA_release"
+
+
 def generate_launch_description():
     worldfile = LaunchConfiguration("worldfile")
 
@@ -68,17 +71,21 @@ def generate_launch_description():
             # --- AsyncVLA inference nodes ---
             Node(
                 package="async_vla",
-                executable="sys2",
+                executable="sys2_rcp",
                 name="sys2",
                 output="screen",
-                parameters=[{"goal": LaunchConfiguration("goal")}, {"use_sim": True}],
+                parameters=[
+                    {"goal": LaunchConfiguration("goal")},
+                    {"use_sim": True},
+                    {"vla_path": VLA_PATH},
+                ],
             ),
             Node(
                 package="async_vla",
-                executable="sys1",
+                executable="sys1_rcp",
                 name="sys1",
                 output="screen",
-                parameters=[{"use_sim": True}],
+                parameters=[{"use_sim": True}, {"shead_path": VLA_PATH}],
             ),
         ]
     )

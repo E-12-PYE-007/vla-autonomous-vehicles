@@ -25,9 +25,7 @@ from transformers import AutoConfig, AutoImageProcessor, AutoModelForVision2Seq,
 from transformers.modeling_outputs import CausalLMOutputWithPast
 
 
-VLA_PATH = os.path.expanduser("~/capstone/code/asyncvla/AsyncVLA/AsyncVLA_release")
 RESUME_STEP = 750000
-DEFAULT_GOAL = "Go to the yellow bin"
 DEVICE_TYPE = "cuda"
 
 
@@ -36,12 +34,15 @@ class Sys2(Node):
         super().__init__("sys2")
         self.get_logger().info("[AsyncVLA Sys2] initialising...")
 
+        self.declare_parameter("vla_path", "")
+        vla_path = self.get_parameter("vla_path").get_parameter_value().string_value
+
         # Load model
-        vla, action_proj, device, num_patches, action_tokenizer, processor = _load_model(VLA_PATH, RESUME_STEP)
+        vla, action_proj, device, num_patches, action_tokenizer, processor = _load_model(vla_path, RESUME_STEP)
         self.inference = Inference(vla, action_proj, device, num_patches, action_tokenizer, processor)
         self.get_logger().info("[AsyncVLA Sys2] Model loaded")
 
-        self.declare_parameter("goal", DEFAULT_GOAL)
+        self.declare_parameter("goal", "")
         self.goal_text = self.get_parameter("goal").get_parameter_value().string_value
         self.get_logger().info(f"[AsyncVLA Sys2] Goal set as: '{self.goal_text}'")
 

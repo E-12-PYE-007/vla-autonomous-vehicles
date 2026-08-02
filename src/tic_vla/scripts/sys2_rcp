@@ -1,0 +1,6 @@
+#!/usr/bin/env python3
+import sys
+sys.path = [p for p in sys.path if '/miniconda3/envs/' not in p or '/tic-vla/' in p]
+sys.path.insert(0, '/vla_storage/capstone/code/ticvla/TIC-VLA')
+from tic_vla.sys2 import main
+sys.exit(main())

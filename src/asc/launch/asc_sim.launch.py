@@ -2,8 +2,8 @@
 """ASC sim launch — Gazebo + control nodes only (no inference).
 
 Run this on the VM alongside inference nodes on the desktop:
-    Desktop: ros2 launch async_vla asc_async.launch.py
-             ros2 launch tic_vla asc_tic.launch.py
+    Desktop: ros2 launch async_vla asc_async_rcp.launch.py
+             ros2 launch tic_vla asc_tic_rcp.launch.py
 
 Usage:
     ros2 launch asc sim.launch.py

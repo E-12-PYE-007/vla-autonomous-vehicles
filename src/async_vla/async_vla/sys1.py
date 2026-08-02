@@ -20,7 +20,6 @@ from custom_msgs.msg import ActionChunk, AsyncHiddenState, ImageWithSeqNum
 from prismatic.models.small_head import Edge_adapter
 
 
-SHEAD_PATH = "/home/vla-cap/capstone/code/asyncvla/AsyncVLA/AsyncVLA_release"
 RESUME_STEP = 750000
 OBS_ENCODING_SIZE = 1024
 MHA_NUM_ATTENTION_HEADS = 4
@@ -42,8 +41,11 @@ class Sys1(Node):
         super().__init__("sys1")
         self.get_logger().info("[AsyncVLA Sys1] initialising...")
 
+        self.declare_parameter("shead_path", "")
+        shead_path = self.get_parameter("shead_path").get_parameter_value().string_value
+
         # Load model
-        shead, self.device = _load_model(SHEAD_PATH, RESUME_STEP)
+        shead, self.device = _load_model(shead_path, RESUME_STEP)
         self.inference = Inference(shead, self.device)
         self.get_logger().info("[AsyncVLA Sys1] Model loaded")
 
