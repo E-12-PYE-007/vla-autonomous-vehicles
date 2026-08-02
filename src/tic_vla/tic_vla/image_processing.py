@@ -52,7 +52,10 @@ class ImageProcessingNode(Node):
     def image_callback(self, msg: ImageWithSeqNum):
         cv_img = self.bridge.imgmsg_to_cv2(msg.img, desired_encoding="rgb8")
         pil_img = PILImage.fromarray(cv_img)
-        tiles = dynamic_preprocess(pil_img, image_size=IMAGE_INPUT_SIZE, use_thumbnail=True, max_num=12)
+        # max_num=1 → a single whole-frame tile (NUM_IMAGE_TOKEN visual tokens), matching
+        # upstream inference, which uses load_image(..., max_num=1) for both the delayed
+        # frames fed to the VLM and the current frame fed to the ActionExpert.
+        tiles = dynamic_preprocess(pil_img, image_size=IMAGE_INPUT_SIZE, use_thumbnail=True, max_num=1)
         pixel_values = torch.stack([self.transform(t) for t in tiles])  # (N, 3, H, W) float32
 
         out = TicPixelValues()

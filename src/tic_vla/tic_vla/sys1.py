@@ -23,7 +23,6 @@ KV_HEAD_DIM           = 64            # InternVL3-1B KV head dim
 KV_CACHE_FEAT_DIM     = KV_NUM_HEADS * KV_HEAD_DIM  # 128
 NUM_IMAGE_TOKENS      = 256           # InternViT-300M tokens per frame
 CONTROL_RATE_HZ       = 10.0
-TARGET_WAYPOINT_IDX   = 10            #TODO tune which chunk step to hand off to controller
 DEVICE_TYPE           = "cuda"
 
 class Sys1(Node):

@@ -12,6 +12,7 @@ from cv_bridge import CvBridge
 from rclpy.node import Node
 from sensor_msgs.msg import Image
 from custom_msgs.msg import AsyncHiddenState, ImageWithSeqNum
+from async_vla.frame_id import sim_seq_num
 
 from prismatic.extern.hf.configuration_prismatic import OpenVLAConfig
 from prismatic.extern.hf.modeling_prismatic import OpenVLAForActionPrediction_MMNv1
@@ -48,7 +49,6 @@ class Sys2(Node):
 
         self.declare_parameter("use_sim", False)
         use_sim = bool(self.get_parameter("use_sim").value)
-        self._sim_seq_num = 0
 
         # Publishers
         self.hidden_state_pub = self.create_publisher(AsyncHiddenState, "/asyncvla/hidden_state", 1)
@@ -64,8 +64,8 @@ class Sys2(Node):
         wrapped = ImageWithSeqNum()
         wrapped.header = msg.header
         wrapped.img = msg
-        wrapped.img_seq_num = self._sim_seq_num
-        self._sim_seq_num += 1
+        # Same derivation as sys1, so both nodes number a given frame identically.
+        wrapped.img_seq_num = sim_seq_num(msg.header)
         self.img_callback(wrapped)
 
     def img_callback(self, msg: ImageWithSeqNum):
@@ -202,6 +202,11 @@ def _load_model(vla_path: str, resume_step: int):
     action_proj = Proj_Actiontokens(input_dim=vla.llm_dim, hidden_dim=vla.llm_dim, action_dim=1024)
     action_proj.load_state_dict(_load_checkpoint("action_proj", vla_path, resume_step))
     action_proj = action_proj.to(torch.bfloat16).to(device)
+
+    # Upstream run_vla.py runs both of these in eval mode. Leaving them in train mode
+    # keeps dropout active during inference and makes the output non-deterministic.
+    vla.eval()
+    action_proj.eval()
 
     # TODO: uncomment to load pose_projector and enable proprio conditioning (see _forward TODO).
     # from prismatic.models.projectors import ProprioProjector

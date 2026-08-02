@@ -16,6 +16,7 @@ from geometry_msgs.msg import Pose2D
 from rclpy.node import Node
 from sensor_msgs.msg import Image
 from custom_msgs.msg import ActionChunk, AsyncHiddenState, ImageWithSeqNum
+from async_vla.frame_id import sim_seq_num
 
 from prismatic.models.small_head import Edge_adapter
 
@@ -56,7 +57,6 @@ class Sys1(Node):
         self.img_buffer_keys = deque(maxlen=IMAGE_BUFFER_SIZE)
         self.latest_hidden_state = None
         self.latest_hidden_seq_num = None
-        self._sim_seq_num = 0
 
         self.declare_parameter("use_sim", False)
         use_sim = bool(self.get_parameter("use_sim").value)
@@ -80,8 +80,7 @@ class Sys1(Node):
         wrapped = ImageWithSeqNum()
         wrapped.header = msg.header
         wrapped.img = msg
-        wrapped.img_seq_num = self._sim_seq_num
-        self._sim_seq_num += 1
+        wrapped.img_seq_num = sim_seq_num(msg.header)
         self.img_callback(wrapped)
 
     def img_callback(self, msg: ImageWithSeqNum):
@@ -118,8 +117,23 @@ class Sys1(Node):
 
         for t in range(poses.shape[1]):
             pose = Pose2D()
+            # y is passed through unmirrored: the model already emits ROS convention
+            # (+y = left). Measured in unempty_office_square against known object
+            # poses, with all four objects inside the camera's +/-31deg FOV:
+            #     chair   raw y +0.820  true bearing +19.6deg (left)
+            #     desk    raw y +0.266  true bearing +16.0deg (left)
+            #     box     raw y -0.746  true bearing  -8.1deg (right)
+            #     cabinet raw y -1.828  true bearing -25.7deg (right)
+            # Rank order and sign both match, and the resulting bearings land within a
+            # few degrees for the box and cabinet. Upstream run_action_head applies
+            # `dy = -dy` inside its own pd_controller, which then feeds a robot with the
+            # opposite steering sign; re-applying it here mirrored every chunk and made
+            # the robot drive to the object opposite the one it was asked for.
+            # theta is left as the model emits it: upstream never steers from
+            # per-waypoint heading, so there is no reference for its sign. Consumers
+            # should prefer the positions.
             pose.x = float(poses[0, t, 0]) * METRIC_WAYPOINT_SPACING
-            pose.y = -float(poses[0, t, 1]) * METRIC_WAYPOINT_SPACING  # TODO: Confirm the sign flip is correct
+            pose.y = float(poses[0, t, 1]) * METRIC_WAYPOINT_SPACING
             pose.theta = float(np.arctan2(poses[0, t, 3], poses[0, t, 2]))
             chunk.relative_poses.append(pose)
 
@@ -159,6 +173,12 @@ def _load_model(shead_path: str, resume_step: int):
         state_dict = {k.replace("module.", "", 1): v for k, v in state_dict.items()}
     shead.load_state_dict(state_dict, strict=False)
     shead.to(torch.bfloat16).to(device)
+    # Edge_adapter contains dropout layers; without eval() they stay active and the same
+    # input produces a different trajectory every call. The noise was as large as the
+    # effect of changing the hidden state, so the language instruction had almost no
+    # influence on the output. Upstream run_vla.py does the same (.eval() on vla and
+    # action_proj).
+    shead.eval()
 
     return shead, device
 

@@ -107,6 +107,14 @@ def generate_launch_description():
             'GZ_SIM_RESOURCE_PATH',
             os.pathsep.join([worlds_dir, local_models_dir])
         ),
+        # This install runs Ignition Fortress (ign gazebo --force-version 6), which reads
+        # the IGN_* name — GZ_SIM_RESOURCE_PATH only exists from Garden on. Without this,
+        # every model:// include (chair, desk, sofa, ...) silently fails to load and the
+        # world comes up as an empty box.
+        SetEnvironmentVariable(
+            'IGN_GAZEBO_RESOURCE_PATH',
+            os.pathsep.join([worlds_dir, local_models_dir])
+        ),
 
         DeclareLaunchArgument(
             'worldfile',

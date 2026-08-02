@@ -73,10 +73,13 @@ def launch_setup(context, *args, **kwargs):
             output="screen",
             parameters=[{"use_sim": True}],
         ),
+        # TIC-VLA benchmark controller (arc-length pure pursuit, port of upstream's
+        # nova_carter driver). Swap executable back to outer_loop_controller for the
+        # odometry-anchored tracker.
         Node(
             package="asc",
-            executable="outer_loop_controller",
-            name="odom_action_chunk_tracker",
+            executable="tic_controller",
+            name="tic_controller",
             output="screen",
             parameters=[{"use_sim": True}],
         ),
@@ -121,7 +124,10 @@ def generate_launch_description():
             ),
             DeclareLaunchArgument(
                 "worldfile",
-                default_value="unempty_office_square.sdf",
+                # 30.3 x 4.3 m corridor with targets 14-16 m away. The 5.3 m square room
+                # is smaller than a single one of TIC-VLA's planning horizons (a 3 s plan
+                # at its trained ~1.5 m/s covers ~4.5 m; it reasons out to 9 s).
+                default_value="unempty_office_hallway.sdf",
                 description="Gazebo world file (relative to earthrover_vla_simulation/worlds/templates).",
             ),
             DeclareLaunchArgument(

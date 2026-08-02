@@ -2,12 +2,15 @@
 """ASC sim launch — Gazebo + control nodes only (no inference).
 
 Run this on the VM alongside inference nodes on the desktop:
-    Desktop: ros2 launch async_vla asc_async_rcp.launch.py
-             ros2 launch tic_vla asc_tic_rcp.launch.py
+    Desktop: ros2 launch async_vla asc_async.launch.py device:=rcp use_sim:=true
+             ros2 launch tic_vla   asc_tic.launch.py   device:=rcp use_sim:=true
+
+Set RMW_IMPLEMENTATION=rmw_zenoh_cpp and ROS_DOMAIN_ID in this machine's shell
+(e.g. ~/.bashrc) to match the inference machine.
 
 Usage:
-    ros2 launch asc sim.launch.py
-    ros2 launch asc sim.launch.py worldfile:=unempty_office_square.sdf
+    ros2 launch asc asc_sim.launch.py
+    ros2 launch asc asc_sim.launch.py worldfile:=unempty_office_square.sdf
 """
 
 import os
@@ -36,6 +39,12 @@ def generate_launch_description():
                 default_value="unempty_office_square.sdf",
                 description="Gazebo world file (relative to earthrover_vla_simulation/worlds/templates).",
             ),
+            DeclareLaunchArgument(
+                "controller",
+                default_value="tic_controller",
+                description="asc controller executable: tic_controller (TIC-VLA benchmark "
+                            "port) | pure_pursuit_controller | outer_loop_controller.",
+            ),
             # --- Simulator ---
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(earthrover_bringup_launch),
@@ -54,8 +63,8 @@ def generate_launch_description():
             ),
             Node(
                 package="asc",
-                executable="pure_pursuit_controller",
-                name="pure_pursuit_controller",
+                executable=LaunchConfiguration("controller"),
+                name="controller",
                 output="screen",
                 parameters=[{"use_sim": True}],
             ),

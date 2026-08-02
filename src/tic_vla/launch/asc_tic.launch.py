@@ -86,7 +86,11 @@ def launch_setup(context, *args, **kwargs):
         ),
     ]
 
-    if device not in NEEDS_ZENOH_ROUTER:
+    # use_sim means we are paired with a local Gazebo, which runs on the default RMW and
+    # starts no router. Forcing zenoh here would put the inference nodes on a separate
+    # graph from the simulator and nothing would connect. Zenoh is only for the tunnelled
+    # robot link.
+    if device not in NEEDS_ZENOH_ROUTER or use_sim:
         return nodes
 
     actions = [
