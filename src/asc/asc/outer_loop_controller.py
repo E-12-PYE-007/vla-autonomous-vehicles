@@ -26,7 +26,7 @@ K_CROSS_TRACK = 1.6
 # (arctan(dy/dx)) and never uses per-waypoint heading. sys1's pose.theta has no
 # reference sign convention, and mixing it with the mirrored y made the two terms
 # disagree about which way to turn. Steer from cross-track error alone.
-K_HEADING = 0.0
+K_HEADING = 1.0
 GOAL_TOLERANCE = 0.05
 CONTROL_RATE_HZ = 10.0
 

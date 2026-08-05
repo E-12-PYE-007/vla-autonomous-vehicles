@@ -85,7 +85,7 @@ def launch_setup(context, *args, **kwargs):
         Node(
             package="asc",
             executable="odometry",
-            name="encoder_odometry",
+            name="odometry",
             output="screen",
             parameters=[{"use_sim": True}, {"odom_topic": odom_topic}],
         ),
