@@ -129,9 +129,13 @@ class Sys2(Node):
             .to(torch.bfloat16)
         )
 
+        # Buffered against wall-clock arrival, not msg.header.stamp: in sim the header
+        # carries Gazebo simulation time, which starts at 0 and is not comparable to the
+        # time.time() the sampler works in.
+        wall = time.time()
         with self.buffer_lock:
-            self.image_buffer.append((stamp, pixel_values))
-            cutoff = stamp - IMAGE_BUFFER_SEC
+            self.image_buffer.append((wall, pixel_values, msg.img_seq_num))
+            cutoff = wall - IMAGE_BUFFER_SEC
             while self.image_buffer and self.image_buffer[0][0] < cutoff:
                 self.image_buffer.popleft()
 
@@ -296,22 +300,39 @@ class Sys2(Node):
             )
 
     def sample_frames(self, now_stamp):
-        """Return 4 pixel_values tensors at {t-9, t-6, t-3, t}, oldest first.
+        """Return the pixel_values at {t-9, t-6, t-3, t}, oldest first.
 
-        Order matters: training builds the frame list by walking the history forward and
+        Mirrors DynaNav's _get_sampled_image_paths: take only the offsets the history can
+        actually satisfy, so the VLM gets 1 frame at startup growing to 4 as history
+        accrues, then drop duplicates so a still image is never presented as a history.
+
+        Matching is on wall-clock arrival. Comparing time.time() against the sim-time
+        header stamp made every offset resolve to the newest frame, so the VLM saw four
+        copies of one instant and the 9 s warm-up guard never bit.
+
+        Order matters: training builds the frame list by walking history forward and
         appending the current frame last, so the model reads Frame 0 -> Frame N as time
         moving forward. Feeding it newest-first reverses apparent motion and the
         ActionExpert predicts backwards waypoints.
         """
         with self.buffer_lock:
             buf = list(self.image_buffer)
-        if not buf or now_stamp - buf[0][0] < FRAME_OFFSETS_SEC[-1]:
+        if not buf:
             return None
-        frames = []
-        for offset in sorted(FRAME_OFFSETS_SEC, reverse=True):
+
+        span = now_stamp - buf[0][0]
+        offsets = [o for o in FRAME_OFFSETS_SEC if o <= span] or [0.0]
+
+        entries = []
+        for offset in sorted(offsets, reverse=True):
             target = now_stamp - offset
-            closest = min(buf, key=lambda e: abs(e[0] - target))
-            frames.append(closest[1])
+            entries.append(min(buf, key=lambda e: abs(e[0] - target)))
+
+        seen, frames = set(), []
+        for entry in entries:
+            if entry[2] not in seen:
+                seen.add(entry[2])
+                frames.append(entry[1])
         return frames
 
     def build_vlm_inputs(self, frames):
