@@ -255,39 +255,80 @@ connect: {
 },
 ```
 
-`rmw_zenoh_cpp` routes through a `rmw_zenohd` process. With `device:=rcp` the launch files
-start one if none is running, set `RMW_IMPLEMENTATION` and `ROS_DOMAIN_ID`, and shut it down
-on Ctrl-C. To keep a router up across launches, start one yourself:
+`rmw_zenoh_cpp` routes through a `rmw_zenohd` process. The launch files do **not** start it
+and do **not** set any environment — set both variables in the shell on each machine, and
+run the router yourself. They must match on both ends or the two graphs never meet.
+
+On rcp and on the machine it pairs with, in `~/.bashrc` or per shell:
+
+```bash
+export RMW_IMPLEMENTATION=rmw_zenoh_cpp
+export ROS_DOMAIN_ID=1          # any value, as long as it is the same on both machines
+```
+
+Then leave a router running in its own terminal:
 
 ```bash
 ros2 run rmw_zenoh_cpp rmw_zenohd
 ```
 
+Only one router is needed per machine, and it can outlive individual launches.
+
+Do not set these for a local one-machine run — Gazebo and Isaac use the default RMW, and
+forcing zenoh puts the inference nodes on a separate graph from the simulator, so nothing
+connects and no error is printed.
+
 ## 5. Launching
+
+There are two launch files per model: a sim one that brings the control stack with it, and
+a hardware one that does not.
+
+|  | sim (includes control) | hardware |
+| --- | --- | --- |
+| AsyncVLA | `async_vla sim_async.launch.py` | `async_vla asc_async.launch.py` |
+| TIC-VLA | `tic_vla sim_tic.launch.py` | `tic_vla asc_tic.launch.py` |
+
+Each sim launch pins the controller its model needs — `outer_loop_controller` for AsyncVLA,
+`tic_controller` for TIC-VLA. They are not interchangeable: `tic_controller` is a port of
+TIC-VLA's benchmark driver and oversteers badly on AsyncVLA's shorter chunks.
+
+Activate the matching conda env first — the `sys1`/`sys2` wrapper scripts resolve their
+interpreter from `PATH`.
 
 ### Sim on one machine
 
-Gazebo, control nodes and inference together:
-
 ```bash
-ros2 launch async_vla sim_async.launch.py
-ros2 launch tic_vla   sim_tic.launch.py
+conda activate asyncvla
+ros2 launch async_vla sim_async.launch.py device:=dsk
+ros2 launch async_vla sim_async.launch.py device:=dsk sim:=isaac
+
+conda activate tic-vla
+ros2 launch tic_vla sim_tic.launch.py device:=dsk
 ```
+
+`sim:=gazebo` (the default) starts Gazebo here. `sim:=isaac` starts nothing simulator-side
+— Isaac runs separately — and only adds the camera bridge. Isaac must publish
+`sensor_msgs/Image` on `/cam_raw` and `nav_msgs/Odometry` on `/sim_odom`, and subscribe
+`geometry_msgs/Twist` on `/cmd_vel`. The odometry node republishes `/sim_odom` onto `/odom`,
+so nothing downstream needs to know which simulator is running.
+
+The Gazebo world is a constant at the top of `asc/launch/asc_sim.launch.py`.
 
 ### Sim split across two machines
 
-Sim and control on the VM:
+Sim and control on the VM, with the controller matching the model you are pairing with:
 
 ```bash
-ros2 launch asc asc_sim.launch.py
+ros2 launch asc asc_sim.launch.py controller:=outer_loop_controller
 ```
 
-Inference on rcp. Gazebo publishes `sensor_msgs/Image` on `/cam`, which `use_sim:=true`
-selects:
+Inference on the other machine:
 
 ```bash
-ros2 launch async_vla asc_async.launch.py device:=rcp use_sim:=true
+ros2 launch async_vla asc_async.launch.py device:=rcp
 ```
+
+This needs the zenoh setup in section 4 on both machines.
 
 ### Hardware
 
@@ -297,28 +338,30 @@ Control stack on the robot:
 ros2 launch asc asc.launch.py
 ```
 
-Inference on whichever machine. The camera publishes `ImageWithSeqNum` on `/cam`, which is
-the default:
+Inference on whichever machine:
 
 ```bash
 ros2 launch async_vla asc_async.launch.py device:=rcp
-ros2 launch async_vla asc_async.launch.py device:=dsk
 ros2 launch tic_vla   asc_tic.launch.py   device:=dsk
 ```
 
 ### Arguments
 
-```bash
-ros2 launch async_vla asc_async.launch.py goal:="Find the red door"
-ros2 launch async_vla asc_async.launch.py device:=rcp domain_id:=7
-ros2 launch tic_vla   sim_tic.launch.py   worldfile:=unempty_office_square.sdf
-ros2 launch async_vla asc_async.launch.py --show-args
-```
-
-`goal:=` applies to all four launch files and both models, and is read once at startup.
-The launch file supplies its value to the nodes.
-
 | Launch file | Arguments |
 | --- | --- |
-| `asc_async.launch.py`, `asc_tic.launch.py` | `device`, `use_sim`, `goal`, `domain_id` |
-| `sim_async.launch.py`, `sim_tic.launch.py` | `device`, `worldfile`, `goal` |
+| `sim_async.launch.py`, `sim_tic.launch.py` | `device`, `sim`, `goal` |
+| `asc_async.launch.py`, `asc_tic.launch.py` | `device`, `goal` |
+| `asc_sim.launch.py` | `sim`, `controller` |
+
+- `device` — `dsk` or `rcp`. Selects model paths and the node wrapper scripts.
+- `sim` — `gazebo` or `isaac`.
+- `goal` — the language instruction, read once at startup.
+- `controller` — only on `asc_sim.launch.py`; the sim launches set it for you.
+
+```bash
+ros2 launch async_vla sim_async.launch.py device:=dsk goal:="Find the red door"
+ros2 launch async_vla sim_async.launch.py --show-args
+```
+
+`--show-args` on a sim launch also lists arguments belonging to the launch files it
+includes. `controller` is among them, but the sim launches override it.

@@ -1,142 +1,83 @@
 #!/usr/bin/env python3
-"""TIC-VLA + simulator, all on one machine.
+"""TIC-VLA in simulation, everything on one machine.
 
-Starts Gazebo (via earthrover_vla_bringup), the asc control nodes in
-sim-compatible configuration, and the TIC-VLA inference nodes.
+Brings up the simulator, the asc control nodes and the TIC-VLA inference nodes. The
+controller is pinned to tic_controller here — it is a port of TIC-VLA's benchmark driver
+(V_MAX 0.30, 1.0 m arc-length lookahead, bearing feedback + curvature feedforward) and is
+not interchangeable with AsyncVLA's.
 
-For a split setup (sim on one machine, inference on another) use
-asc_tic.launch.py with use_sim:=true instead, alongside `ros2 launch asc asc_sim.launch.py`.
+Run from a shell with the tic-vla conda env active, since the sys1/sys2 wrapper scripts
+resolve their interpreter from PATH:
 
-Usage:
-    ros2 launch tic_vla sim_tic.launch.py
+    conda activate tic-vla
+
     ros2 launch tic_vla sim_tic.launch.py device:=dsk
-    ros2 launch tic_vla sim_tic.launch.py worldfile:=unempty_office_square.sdf
-    ros2 launch tic_vla sim_tic.launch.py goal:="Find the red door"
+    ros2 launch tic_vla sim_tic.launch.py device:=dsk sim:=isaac
+    ros2 launch tic_vla sim_tic.launch.py device:=rcp goal:="Find the red door"
+
+sim:=gazebo starts Gazebo here. sim:=isaac expects Isaac to be running already,
+publishing sensor_msgs/Image on /cam_raw and nav_msgs/Odometry on /sim_odom, and
+subscribing geometry_msgs/Twist on /cmd_vel.
+
+The controller is fixed here; change it in asc_sim.launch.py, which this includes.
+
+For hardware, or to split sim and inference across two machines, use asc_tic.launch.py
+instead.
+
 """
 
 import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import (
-    DeclareLaunchArgument,
-    IncludeLaunchDescription,
-    OpaqueFunction,
-    SetEnvironmentVariable,
-)
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
-from launch_ros.actions import Node
-
-# Model weight locations per machine. Keep in sync with asc_tic.launch.py.
-DEVICE_PATHS = {
-    "rcp": {
-        "vlm": "/vla_storage/capstone/code/ticvla/InternVL3-1B",
-        "checkpoint": "/vla_storage/capstone/code/ticvla/TIC-VLA-model.ckpt",
-    },
-    "dsk": {
-        "vlm": "/home/vla-cap/capstone/code/ticvla/InternVL3-1B",
-        "checkpoint": "/home/vla-cap/capstone/code/ticvla/TIC-VLA-model.ckpt",
-    },
-}
-
-
-def launch_setup(context, *args, **kwargs):
-    device = LaunchConfiguration("device").perform(context)
-    if device not in DEVICE_PATHS:
-        raise RuntimeError(
-            f"Unknown device '{device}'. Valid options: {', '.join(sorted(DEVICE_PATHS))}"
-        )
-    vlm_path = DEVICE_PATHS[device]["vlm"]
-    checkpoint_path = DEVICE_PATHS[device]["checkpoint"]
-
-    earthrover_bringup_launch = os.path.join(
-        get_package_share_directory("earthrover_vla_bringup"),
-        "launch",
-        "launch.py",
-    )
-
-    return [
-        # --- Simulator ---
-        IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(earthrover_bringup_launch),
-            launch_arguments={
-                "mode": "sim",
-                "worldfile": LaunchConfiguration("worldfile"),
-            }.items(),
-        ),
-        # --- ASC control nodes (sim mode) ---
-        Node(
-            package="asc",
-            executable="odometry",
-            name="encoder_odometry",
-            output="screen",
-            parameters=[{"use_sim": True}],
-        ),
-        # TIC-VLA benchmark controller (arc-length pure pursuit, port of upstream's
-        # nova_carter driver). Swap executable back to outer_loop_controller for the
-        # odometry-anchored tracker.
-        Node(
-            package="asc",
-            executable="tic_controller",
-            name="tic_controller",
-            output="screen",
-            parameters=[{"use_sim": True}],
-        ),
-        # --- TIC-VLA inference nodes ---
-        Node(
-            package="tic_vla",
-            executable=f"image_processing_{device}",
-            name="tic_vla_image_processing",
-            output="screen",
-        ),
-        Node(
-            package="tic_vla",
-            executable=f"sys2_{device}",
-            name="sys2",
-            output="screen",
-            parameters=[
-                {"instruction": LaunchConfiguration("goal")},
-                {"vlm_path": vlm_path, "checkpoint_path": checkpoint_path},
-            ],
-        ),
-        Node(
-            package="tic_vla",
-            executable=f"sys1_{device}",
-            name="sys1",
-            output="screen",
-            parameters=[{"checkpoint_path": checkpoint_path}],
-        ),
-    ]
 
 
 def generate_launch_description():
+    asc_sim_launch = os.path.join(
+        get_package_share_directory("asc"), "launch", "asc_sim.launch.py"
+    )
+    tic_inference_launch = os.path.join(
+        get_package_share_directory("tic_vla"), "launch", "asc_tic.launch.py"
+    )
+
     return LaunchDescription(
         [
             DeclareLaunchArgument(
                 "device",
-                default_value="rcp",
-                description="Which machine this is running on: "
-                            f"{' | '.join(sorted(DEVICE_PATHS))}. "
-                            "Selects the model paths and the node wrapper scripts.",
+                default_value="dsk",
+                description="Which machine this is running on: dsk | rcp. Selects the "
+                            "model paths and the node wrapper scripts.",
             ),
             DeclareLaunchArgument(
-                "worldfile",
-                # 30.3 x 4.3 m corridor with targets 14-16 m away. The 5.3 m square room
-                # is smaller than a single one of TIC-VLA's planning horizons (a 3 s plan
-                # at its trained ~1.5 m/s covers ~4.5 m; it reasons out to 9 s).
-                default_value="unempty_office_hallway.sdf",
-                description="Gazebo world file (relative to earthrover_vla_simulation/worlds/templates).",
+                "sim",
+                default_value="gazebo",
+                choices=["gazebo", "isaac"],
+                description="Which simulator to pair with. gazebo is started here; isaac "
+                            "runs separately and only needs the camera bridge.",
             ),
             DeclareLaunchArgument(
                 "goal",
                 default_value="Go to the yellow bin.",
                 description="Language instruction for TIC-VLA.",
             ),
-            # Silence TensorFlow's startup noise (NUMA, cuDNN/cuFFT/cuBLAS factory,
-            # TF-TRT). TF is pulled in transitively but never used for inference.
-            SetEnvironmentVariable("TF_CPP_MIN_LOG_LEVEL", "3"),
-            SetEnvironmentVariable("TF_ENABLE_ONEDNN_OPTS", "0"),
-            OpaqueFunction(function=launch_setup),
+            # --- Simulator + control ---
+            IncludeLaunchDescription(
+                PythonLaunchDescriptionSource(asc_sim_launch),
+                launch_arguments={
+                    "sim": LaunchConfiguration("sim"),
+                    "controller": "tic_controller",
+                }.items(),
+            ),
+            # --- Inference ---
+            IncludeLaunchDescription(
+                PythonLaunchDescriptionSource(tic_inference_launch),
+                launch_arguments={
+                    "device": LaunchConfiguration("device"),
+                    "goal": LaunchConfiguration("goal"),
+                }.items(),
+            ),
         ]
     )

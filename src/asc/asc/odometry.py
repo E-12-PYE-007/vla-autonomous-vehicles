@@ -43,14 +43,28 @@ class EncoderOdometryNode(Node):
         self.odom_pub = self.create_publisher(Odometry, "odom", 10)
         self.pose2d_pub = self.create_publisher(Pose2D, "odom_pose2d", 10)
 
+        self.republish_odom = False
+
         if use_sim:
+            # Isaac publishes its odometry on /sim_odom rather than /odom. Rather than
+            # remap every consumer (tic_vla sys1 and sys2 both subscribe to /odom
+            # directly), subscribe to whatever the simulator uses and republish it on
+            # /odom, so /odom stays canonical for everything downstream.
+            self.declare_parameter("odom_topic", "odom")
+            self.odom_topic = self.get_parameter("odom_topic").get_parameter_value().string_value or "odom"
+            self.republish_odom = self.odom_topic.lstrip("/") != "odom"
+
             self.create_subscription(
                 Odometry,
-                "odom",
+                self.odom_topic,
                 self.sim_odom_callback,
                 10,
             )
-            self.get_logger().info("Odometry node started in sim mode (passthrough from /odom)")
+            self.get_logger().info(
+                f"Odometry node started in sim mode (passthrough from {self.odom_topic}"
+                + (" -> /odom" if self.republish_odom else "")
+                + ")"
+            )
         else:
             self.create_subscription(
                 LeftRightInt32,
@@ -61,7 +75,7 @@ class EncoderOdometryNode(Node):
             self.get_logger().info("Encoder odometry node started")
 
     def sim_odom_callback(self, msg):
-        """Pass Gazebo odometry through as odom_pose2d; skip encoder integration."""
+        """Pass simulator odometry through as odom_pose2d; skip encoder integration."""
         self.x = msg.pose.pose.position.x
         self.y = msg.pose.pose.position.y
         qz = msg.pose.pose.orientation.z
@@ -73,6 +87,10 @@ class EncoderOdometryNode(Node):
         pose.y = self.y
         pose.theta = self.theta
         self.pose2d_pub.publish(pose)
+
+        # Only when the source topic is not already /odom, so this cannot feed itself.
+        if self.republish_odom:
+            self.odom_pub.publish(msg)
 
     def encoder_callback(self, msg):
         """Integrate one left/right encoder delta sample."""
