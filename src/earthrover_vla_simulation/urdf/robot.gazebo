@@ -78,8 +78,7 @@
         <visualize>true</visualize>
         <update_rate>10</update_rate>
         <camera>
-            <!-- Field of view - should check this -->
-            <horizontal_fov>1.089</horizontal_fov>
+            <horizontal_fov>2.094</horizontal_fov>
             <image>
                 <!-- 8 bits of each of RGB -->
                 <format>R8G8B8</format>
