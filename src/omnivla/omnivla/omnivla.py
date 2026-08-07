@@ -1,5 +1,12 @@
-import sys, os
-sys.path.insert(0, '..')
+import os
+from functools import lru_cache
+from typing import Type
+
+import numpy as np
+from PIL import Image as PILImage
+import torch
+import torch.nn as nn
+from torch.nn.utils.rnn import pad_sequence
 
 import rclpy
 from rclpy.node import Node
@@ -7,21 +14,6 @@ from custom_msgs.msg import ActionChunk, ImageWithSeqNum
 from cv_bridge import CvBridge
 from geometry_msgs.msg import Pose2D
 
-from functools import lru_cache
-import time, math
-from typing import Optional, Tuple, Type
-
-
-import numpy as np
-from PIL import Image as PILImage
-import torch
-import torch.nn as nn
-from torch.nn.utils.rnn import pad_sequence
-import matplotlib.pyplot as plt
-
-# ---------------------------
-# Custom Imports
-# ---------------------------
 from prismatic.vla.action_tokenizer import ActionTokenizer
 from prismatic.models.projectors import ProprioProjector
 from prismatic.models.action_heads import L1RegressionActionHead_idcat
@@ -34,7 +26,7 @@ from prismatic.vla.constants import ACTION_DIM, NUM_ACTIONS_CHUNK, POSE_DIM
 
 from transformers import AutoConfig, AutoProcessor, AutoModelForVision2Seq, AutoImageProcessor
 
-# Language-only is always modality 7 (see header).
+# Language-only is always modality 7
 MODALITY_ID_LANGUAGE_ONLY = 7
 INFERENCE_RATE = 3.0 #Hz
 RESUME_STEP = 210000 # Checkpoint step to load model from
@@ -43,10 +35,6 @@ METRIC_WAYPOINT_SPACING = 0.1 #Obtained from VMAX/Inference rate -- same convent
 # ===============================================================
 # Utility Functions
 # ===============================================================
-def clip_angle(angle: float) -> float:
-    """Wrap an angle to [-pi, pi]. (The original script referenced this without defining it.)"""
-    return (angle + np.pi) % (2 * np.pi) - np.pi
-
 def remove_ddp_in_checkpoint(state_dict: dict) -> dict:
     return {k[7:] if k.startswith("module.") else k: v for k, v in state_dict.items()}
 
@@ -69,6 +57,7 @@ def init_module(
     module_name: str,
     device_id: int,
     module_args: dict,
+    to_bf16: bool = False
 ) -> nn.Module:
     module = module_class(**module_args)
     count_parameters(module, module_name)
@@ -76,6 +65,8 @@ def init_module(
     state_dict = load_checkpoint(module_name, vla_path, resume_step)
     module.load_state_dict(state_dict)
 
+    if to_bf16:
+        module = module.to(torch.bfloat16)
     module = module.to(device_id)
     return module
 
@@ -100,15 +91,15 @@ def _load_model(vla_path: str, resume_step: int):
         vla_path,
         torch_dtype=torch.bfloat16,
         low_cpu_mem_usage=True,
-    ).to(device) #            trust_remote_code=True,
+    ).to(device)
     
     vla.vision_backbone.set_num_images_in_input(2) # Required even when not using goal image for correct tensor shape
     vla.to(dtype=torch.bfloat16, device=device)
 
-    # TODO: Verify if this needs to be passed or initialised
+    # Required even though not using pose goal to maintain tensor shape for mask
     pose_projector = init_module(
         vla_path,
-        RESUME_STEP,
+        resume_step,
         ProprioProjector,
         "pose_projector",
         device,
@@ -117,13 +108,18 @@ def _load_model(vla_path: str, resume_step: int):
     
     action_head = init_module(
         vla_path,
-        RESUME_STEP,
+        resume_step,
         L1RegressionActionHead_idcat,
         "action_head",
         device,
         {"input_dim": vla.llm_dim, "hidden_dim": vla.llm_dim, "action_dim": ACTION_DIM},            
         to_bf16=True,
-    )            
+    )
+
+    # Sets models to evaluation mode - i.e. no dropout
+    vla.eval()
+    action_head.eval()
+    pose_projector.eval()     
  
     # Get number of vision patches
     NUM_PATCHES = vla.vision_backbone.get_num_patches() * vla.vision_backbone.get_num_images_in_input()    
@@ -150,7 +146,7 @@ class Omnivla(Node):
         self.declare_parameter("vla_path", "")
         vla_path = self.get_parameter("vla_path").get_parameter_value().string_value
 
-        # Load Model (???)
+        # Load model
         vla, action_head, pose_projector, device, NUM_PATCHES, action_tokenizer, processor = _load_model(vla_path, RESUME_STEP)
         self.inference = Inference(
             vla,
@@ -180,19 +176,20 @@ class Omnivla(Node):
                         }
         # Inference timer
         self.create_timer(1.0 / INFERENCE_RATE, self.inference_timer_callback)
-        self.get_logger().info("[AsyncVLA Sys1] Triggering main control loop...")
+        self.get_logger().info("[OmniVLA] Triggering main control loop...")
 
     def img_callback(self, msg: ImageWithSeqNum):
         img = PILImage.fromarray(self.bridge.imgmsg_to_cv2(msg.img, desired_encoding="rgb8"))
         seq_num = msg.img_seq_num
-        self.latest_img = [img, seq_num]
+        self.latest_img["img"] = img
+        self.latest_img["seq_num"] = seq_num
 
     def inference_timer_callback(self):
-        if self.latest_img.img is None:
-            self.get_logger().info(f"[OmniVLA] No image ready for inference")
+        if self.latest_img["img"] is None:
+            self.get_logger().info("[OmniVLA] No image ready for inference")
             return
-        actions = self.inference.run(self.latest_img.img, self.goal_text)
-        self.publish_action_chunk(actions, self.latest_img.seq_num)
+        actions = self.inference.run(self.latest_img["img"], self.goal_text)
+        self.publish_action_chunk(actions, self.latest_img["seq_num"])
 
     def publish_action_chunk(self, poses: np.ndarray, img_seq_num: int):
         chunk = ActionChunk()
@@ -222,7 +219,7 @@ class Omnivla(Node):
             chunk.relative_poses.append(pose)
 
         self.action_chunk_pub.publish(chunk)
-        self.get_logger().info(f"[AsyncVLA Sys1] Published action chunk seq={img_seq_num}")
+        self.get_logger().info(f"[OmniVLA] Published action chunk seq={img_seq_num}")
 
 
 # ===============================================================
@@ -232,170 +229,84 @@ class Inference:
     def __init__(self, vla, action_head, pose_projector, device, num_patches, action_tokenizer, processor):
         self.vla = vla
         self.action_head = action_head
-        self.pose_projector = pose_projector #TODO: Check if required?
+        self.pose_projector = pose_projector  # TODO: Check if required?
         self.device = device
         self.num_patches = num_patches
         self.action_tokenizer = action_tokenizer
         self.processor = processor
-        self.count_id = 0
-        #TODO: Check if all of these are needed.
-    
-    def run(self, img_PIL, goal_text):
-        batch = self.data_transformer_omnivla(
-            img_PIL,
-            goal_text,
-            goal_image_PIL=img_PIL, # duplicate the current img to maintain tensor shape. It is masked out later.
-            goal_pose_loc_norm=np.zeros(POSE_DIM, dtype=np.float32),
-            action_tokenizer=self.action_tokenizer,
-            processor=self.processor,
-        )
 
-        # Run forward pass
-        actions = self.run_forward_pass(
-            vla=self.vla.eval(),
-            action_head=self.action_head.eval(),
-            pose_projector=self.pose_projector.eval(),
-            batch=batch,
-            device_id=self.device,
-            num_patches=self.NUM_PATCHES,
-        )
+    def run(self, img: PILImage.Image, goal_text: str) -> np.ndarray:
+        batch = self._prepare_batch(img, goal_text)
+        return self._forward(batch)
 
-        return actions
-
-    # ----------------------------
-    # Custom Collator
-    # ----------------------------
-    def collator_custom(self, instances, model_max_length, pad_token_id, pixel_values_dtype=torch.float32):
+    def _prepare_batch(self, img: PILImage.Image, goal_text: str) -> dict:
         IGNORE_INDEX = -100
-        input_ids = pad_sequence([inst["input_ids"] for inst in instances], batch_first=True, padding_value=pad_token_id)
-        labels = pad_sequence([inst["labels"] for inst in instances], batch_first=True, padding_value=IGNORE_INDEX)
-        input_ids, labels = input_ids[:, :model_max_length], labels[:, :model_max_length]
-        attention_mask = input_ids.ne(pad_token_id)
+        actions = np.random.rand(8, 4)  # dummy actions for token layout only
 
-        # Stack current + (dummy) goal image on the channel dim -> (B, 2C, H, W)
-        pixel_values_current = [inst["pixel_values_current"] for inst in instances]
-        pixel_values_goal = [inst["pixel_values_goal"] for inst in instances]
-        pixel_values = torch.cat((torch.stack(pixel_values_current), torch.stack(pixel_values_goal)), dim=1)
-
-        actions = torch.stack([torch.from_numpy(np.copy(inst["actions"])) for inst in instances])
-        goal_pose = torch.stack([torch.from_numpy(np.copy(inst["goal_pose"])) for inst in instances])
-
-        return dict(
-            pixel_values=pixel_values,
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            labels=labels,
-            actions=actions,
-            goal_pose=goal_pose,
-        )
-
-    # ----------------------------
-    # Transform Data to Dataset Format
-    # ----------------------------
-    def transform_datatype(self, inst_obj, actions, goal_pose_cos_sin,
-                           current_image_PIL, goal_image_PIL, action_tokenizer,
-                           base_tokenizer, image_transform, predict_stop_token=True):
-        IGNORE_INDEX = -100
-        current_action = actions[0]
-        future_actions = actions[1:]
-        future_actions_string = ''.join(action_tokenizer(future_actions))
-        current_action_string = action_tokenizer(current_action)
-        action_chunk_string = current_action_string + future_actions_string
-        action_chunk_len = len(action_chunk_string)
-
-        conversation = [
-            {"from": "human", "value": f"What action should the robot take to {inst_obj}?"},
-            {"from": "gpt", "value": action_chunk_string},
-        ]
+        action_chunk_string = self.action_tokenizer(actions[0]) + "".join(self.action_tokenizer(actions[1:]))
 
         prompt_builder = PurePromptBuilder("openvla")
-        for turn in conversation:
-            prompt_builder.add_turn(turn["from"], turn["value"])
+        prompt_builder.add_turn("human", f"What action should the robot take to {goal_text}?")
+        prompt_builder.add_turn("gpt", action_chunk_string)
 
-        # Tokenize
-        input_ids = torch.tensor(base_tokenizer(prompt_builder.get_prompt(), add_special_tokens=True).input_ids)
+        tokenizer = self.processor.tokenizer
+        input_ids = torch.tensor(tokenizer(prompt_builder.get_prompt(), add_special_tokens=True).input_ids)
         labels = input_ids.clone()
-        labels[:-(action_chunk_len + 1)] = IGNORE_INDEX
-        if not predict_stop_token:
-            labels[-1] = IGNORE_INDEX
+        labels[: -(len(action_chunk_string) + 1)] = IGNORE_INDEX
 
-        pixel_values_current = image_transform(current_image_PIL)
-        pixel_values_goal = image_transform(goal_image_PIL)
+        pixel_values = self.processor.image_processor.apply_transform(img)
+        stacked = torch.stack([pixel_values])
+        pixel_values_b = torch.cat([stacked, stacked], dim=1)  # duplicate as goal image (masked out for lang-only)
 
-        return dict(
-            pixel_values_current=pixel_values_current,
-            pixel_values_goal=pixel_values_goal,
-            input_ids=input_ids,
-            labels=labels,
-            actions=torch.as_tensor(actions),
-            goal_pose=goal_pose_cos_sin,
-        )
+        input_ids_b = pad_sequence([input_ids], batch_first=True, padding_value=tokenizer.pad_token_id)
+        labels_b = pad_sequence([labels], batch_first=True, padding_value=IGNORE_INDEX)
+        input_ids_b = input_ids_b[:, : tokenizer.model_max_length]
+        labels_b = labels_b[:, : tokenizer.model_max_length]
 
-    # ----------------------------
-    # Data Transformer for OmniVLA
-    # ----------------------------
-    def data_transformer_omnivla(self, current_image_PIL, lan_inst, goal_image_PIL, goal_pose_loc_norm,
-                                 action_tokenizer, processor):
-        actions = np.random.rand(8, 4)  # dummy actions -- only used to shape the prompt's action tokens
+        return {
+            "pixel_values": pixel_values_b,
+            "input_ids": input_ids_b,
+            "attention_mask": input_ids_b.ne(tokenizer.pad_token_id),
+            "labels": labels_b,
+            "goal_pose": torch.zeros(1, POSE_DIM, dtype=torch.float32),
+        }
 
-        batch_data = self.transform_datatype(
-            lan_inst, actions, goal_pose_loc_norm,
-            current_image_PIL, goal_image_PIL,
-            action_tokenizer=action_tokenizer,
-            base_tokenizer=processor.tokenizer,
-            image_transform=processor.image_processor.apply_transform,
-        )
-
-        batch = self.collator_custom(
-            instances=[batch_data],
-            model_max_length=processor.tokenizer.model_max_length,
-            pad_token_id=processor.tokenizer.pad_token_id,
-        )
-        return batch
-
-    # ----------------------------
-    # Run Forward Pass
-    # ----------------------------
-    def run_forward_pass(self, vla, action_head, pose_projector, batch, device_id, num_patches) -> torch.Tensor:
+    def _forward(self, batch: dict) -> np.ndarray:
         modality_id = torch.as_tensor([MODALITY_ID_LANGUAGE_ONLY], dtype=torch.float32)
 
         with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
-            output = vla(
-                input_ids=batch["input_ids"].to(device_id),
-                attention_mask=batch["attention_mask"].to(device_id),
-                pixel_values=batch["pixel_values"].to(torch.bfloat16).to(device_id),
-                modality_id=modality_id.to(torch.bfloat16).to(device_id),
-                labels=batch["labels"].to(device_id),
+            output = self.vla(
+                input_ids=batch["input_ids"].to(self.device),
+                attention_mask=batch["attention_mask"].to(self.device),
+                pixel_values=batch["pixel_values"].to(torch.bfloat16).to(self.device),
+                modality_id=modality_id.to(torch.bfloat16).to(self.device),
+                labels=batch["labels"].to(self.device),
                 output_hidden_states=True,
-                proprio=batch["goal_pose"].to(torch.bfloat16).to(device_id),
-                proprio_projector=pose_projector,
+                proprio=batch["goal_pose"].to(torch.bfloat16).to(self.device),
+                proprio_projector=self.pose_projector,
                 noisy_actions=None,
                 noisy_action_projector=None,
                 diffusion_timestep_embeddings=None,
                 use_film=False,
             )
 
-        # Prepare data for action extraction
-        ground_truth_token_ids = batch["labels"][:, 1:].to(device_id)
-        current_action_mask = get_current_action_mask(ground_truth_token_ids)
-        next_actions_mask = get_next_actions_mask(ground_truth_token_ids)
+        gt_token_ids = batch["labels"][:, 1:].to(self.device)
+        action_mask = get_current_action_mask(gt_token_ids) | get_next_actions_mask(gt_token_ids)
 
-        # Get last-layer hidden states for the action portion of the response
-        last_hidden_states = output.hidden_states[-1]  # (B, seq_len, D)
-        text_hidden_states = last_hidden_states[:, num_patches:-1]
+        text_hidden_states = output.hidden_states[-1][:, self.num_patches:-1]
         batch_size = batch["input_ids"].shape[0]
         actions_hidden_states = (
-            text_hidden_states[current_action_mask | next_actions_mask]
+            text_hidden_states[action_mask]
             .reshape(batch_size, NUM_ACTIONS_CHUNK * ACTION_DIM, -1)
             .to(torch.bfloat16)
-        )  # (B, act_chunk_len, D)
+        )
 
         with torch.no_grad():
-            predicted_actions = action_head.predict_action(
-                actions_hidden_states, modality_id.to(torch.bfloat16).to(device_id)
+            predicted_actions = self.action_head.predict_action(
+                actions_hidden_states, modality_id.to(torch.bfloat16).to(self.device)
             )
 
-        return predicted_actions
+        return predicted_actions.detach().to(torch.float32).cpu().numpy()
     
 
 

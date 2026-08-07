@@ -3,9 +3,14 @@
 <package format="3">
   <name>omnivla</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
+  <description>OmniVLA language-only VLA inference node</description>
   <maintainer email="lisa.yamamotto@gmail.com">vla-cap</maintainer>
-  <license>TODO: License declaration</license>
+  <license>Apache-2.0</license>
+
+  <depend>rclpy</depend>
+  <depend>cv_bridge</depend>
+  <depend>geometry_msgs</depend>
+  <depend>custom_msgs</depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

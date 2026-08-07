@@ -1,0 +1,6 @@
+#!/home/vla-cap/miniconda3/envs/omnivla/bin/python3
+import sys
+sys.path = [p for p in sys.path if '/miniconda3/envs/' not in p or '/omnivla/' in p]
+sys.path.insert(0, '/home/vla-cap/omniVLA-release')
+from omnivla.omnivla import main
+sys.exit(main())
