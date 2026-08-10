@@ -1,16 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Edge Setup — AsyncVLA sys1 (small head only)
+# Edge Setup — AsyncVLA sys1 (small head only, aarch64)
 #
-# For aarch64 devices (e.g. Jetson) running sys1 only. Installs the conda env
-# and the prismatic Python package but skips the 15 GB model weights — sys1
-# only needs the shead checkpoint, which lives in AsyncVLA_release already.
-#
-# tensorflow-graphics is declared as a dep of AsyncVLA but is not used by sys1.
-# Its transitive dep tensorflow-addons has no aarch64 PyPI wheels, so we stub
-# both packages out before the main install so pip's resolver sees them as
-# already satisfied.
+# Installs only what sys1 actually imports. Does not use AsyncVLA's setup.py,
+# which pulls in tensorflow-graphics and other unused deps with no aarch64 wheels.
 #
 # Prerequisite: AsyncVLA repo already cloned at $BASE_DIR/AsyncVLA
 #
@@ -64,23 +58,23 @@ fi
 echo "[5/6] Installing Python dependencies..."
 conda activate asyncvla
 
-pip install numpy==1.26.4 torch==2.2.0 torchvision==0.17.0 torchaudio==2.2.0
+pip install \
+    numpy==1.26.4 \
+    torch==2.2.0 \
+    torchvision==0.17.0 \
+    torchaudio==2.2.0 \
+    opencv-python-headless==4.11.0.86 \
+    pillow \
+    efficientnet_pytorch
 
-pip install opencv-python-headless==4.11.0.86
 
-# tensorflow-graphics and tensorflow-addons have no aarch64 wheels but are
-# declared deps of AsyncVLA. Neither is used by sys1. Install both without
-# their own deps so pip's resolver treats them as satisfied.
-pip install --no-deps tensorflow-addons tensorflow-graphics
-
-
-# --- Step 6: Install AsyncVLA Python packages ---
-echo "[6/6] Installing AsyncVLA packages..."
+# --- Step 6: Install prismatic and vint_train without their declared deps ---
+echo "[6/6] Installing prismatic and vint_train..."
 cd "$ASYNCVLA_DIR"
-pip install -e .
+pip install --no-deps -e .
 
 cd "$ASYNCVLA_DIR/visualnav-transformer/train"
-pip install -e .
+pip install --no-deps -e .
 
 
 # --- Done ---
