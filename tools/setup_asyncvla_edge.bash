@@ -49,6 +49,7 @@ python -m pip install \
     "huggingface_hub[cli]" \
     pillow \
     "numpy==1.26.4" \
+    "opencv-python-headless==4.11.0.86" \
     efficientnet_pytorch \
     einops \
     "timm==0.9.10" \

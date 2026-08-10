@@ -8,7 +8,7 @@ from rclpy.node import Node
 
 from custom_msgs.msg import ImageWithSeqNum
 
-CAMERA_DEVICE = 0
+CAMERA_DEVICE = 1
 FRAME_WIDTH = 1920
 FRAME_HEIGHT = 1080
 FPS = 5.0
