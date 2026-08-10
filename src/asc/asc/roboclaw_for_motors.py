@@ -17,8 +17,8 @@ ENCODER_PERIOD_SEC = 0.1
 MAX_DUTY_CYCLE = 100.0
 # M1 is the left motor and is mounted/wired in reverse, so commands and
 # encoder deltas are multiplied by -1. M2/right stays positive.
-LEFT_MOTOR_MULTIPLIER = -1.0
-RIGHT_MOTOR_MULTIPLIER = 1.0
+LEFT_MOTOR_MULTIPLIER = 1.0
+RIGHT_MOTOR_MULTIPLIER = -1.0
 # Set to True to test the whole ROS/VLA stack without opening the serial
 # port or sending commands to physical motors.
 DRY_RUN = False
@@ -89,7 +89,7 @@ class RoboclawForMotorsNode(Node):
         if self.connected:
             rc_left = int(duty_left * PERCENT_TO_ROBOCLAW)
             rc_right = int(duty_right * PERCENT_TO_ROBOCLAW)
-            if not self.roboclaw.DutyM1M2(self.address, rc_left, rc_right):
+            if not self.roboclaw.DutyM1M2(self.address, rc_right, rc_left):
                 self.get_logger().warn("Roboclaw did not acknowledge DutyM1M2 command")
 
         out = LeftRightFloat32()
@@ -115,8 +115,8 @@ class RoboclawForMotorsNode(Node):
         if not result[0]:
             return None
 
-        left = result[1] if result[1] < 0x80000000 else result[1] - 0x100000000
-        right = result[2] if result[2] < 0x80000000 else result[2] - 0x100000000
+        right = result[1] if result[1] < 0x80000000 else result[1] - 0x100000000
+        left = result[2] if result[2] < 0x80000000 else result[2] - 0x100000000
         return int(left), int(right)
 
     def publish_encoder_delta(self):
