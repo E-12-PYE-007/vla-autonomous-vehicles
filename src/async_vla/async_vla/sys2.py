@@ -88,7 +88,7 @@ class Sys2(Node):
 
     def _publish_omni_action_chunk(self, omni_actions: np.ndarray, img_seq_num: int):
         """Publish the base VLA's own action prediction (before edge-adapter refinement)."""
-        poses = _delta_to_pose_np(omni_actions)  # (1, T, 4)
+        poses = omni_actions  # (1, T, 4); action_head output is already absolute poses, no delta_to_pose needed
         chunk = ActionChunk()
         chunk.header.stamp = self.get_clock().now().to_msg()
         chunk.seq_num = img_seq_num
@@ -272,28 +272,6 @@ def _load_model(vla_path: str, resume_step: int):
     action_tokenizer = ActionTokenizer(processor.tokenizer)
 
     return vla, action_proj, action_head, device, num_patches, action_tokenizer, processor
-
-
-def _delta_to_pose_np(delta: np.ndarray) -> np.ndarray:
-    """Integrate per-step deltas (N, T, 4) into absolute robot-frame poses (N, T, 4).
-
-    Matches sys1._delta_to_pose but operates on numpy. Each step:
-    [dx, dy, cos(dtheta), sin(dtheta)] → running (x, y, cos(theta), sin(theta)).
-    """
-    dx = delta[..., 0]
-    dy = delta[..., 1]
-    dtheta = np.arctan2(delta[..., 3], delta[..., 2])
-    N, T = dx.shape
-
-    x, y, theta = dx[:, 0].copy(), dy[:, 0].copy(), dtheta[:, 0].copy()
-    poses = [np.stack([x, y, np.cos(theta), np.sin(theta)], axis=-1)]
-    for t in range(1, T):
-        ct, st = np.cos(theta), np.sin(theta)
-        x = x + ct * dx[:, t] - st * dy[:, t]
-        y = y + st * dx[:, t] + ct * dy[:, t]
-        theta = theta + dtheta[:, t]
-        poses.append(np.stack([x, y, np.cos(theta), np.sin(theta)], axis=-1))
-    return np.stack(poses, axis=1)
 
 
 def main(args=None):
