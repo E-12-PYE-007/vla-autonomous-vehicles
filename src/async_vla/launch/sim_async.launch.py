@@ -57,11 +57,11 @@ def generate_launch_description():
                 output="screen",
                 parameters=[{"use_sim": True}],
             ),
-            # Converts ActionChunk + odom_pose2d into /cmd_vel (Twist) for Gazebo
+            # PD waypoint controller — reference AsyncVLA controller, publishes /cmd_vel at 10 Hz
             Node(
                 package="asc",
-                executable="outer_loop_controller",
-                name="outer_loop_controller",
+                executable="async_pd_controller",
+                name="async_pd_controller",
                 output="screen",
                 parameters=[{"use_sim": True}],
             ),
@@ -79,6 +79,13 @@ def generate_launch_description():
                 name="sys1",
                 output="screen",
                 parameters=[{"use_sim": True}],
+            ),
+            # Snapshots sys1 + sys2 action chunks to CSV once per second for offline plotting.
+            Node(
+                package="async_vla",
+                executable="store_action_chunks",
+                name="store_action_chunks",
+                output="screen",
             ),
         ]
     )

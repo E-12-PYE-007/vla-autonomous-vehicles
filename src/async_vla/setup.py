@@ -28,6 +28,8 @@ setup(
         ],
     },
     entry_points={
-        'console_scripts': [],
+        'console_scripts': [
+            'store_action_chunks = async_vla.store_action_chunks:main',
+        ],
     },
 )

@@ -11,11 +11,13 @@ import rclpy
 from cv_bridge import CvBridge
 from rclpy.node import Node
 from sensor_msgs.msg import Image
-from custom_msgs.msg import AsyncHiddenState, ImageWithSeqNum
+from geometry_msgs.msg import Pose2D
+from custom_msgs.msg import ActionChunk, AsyncHiddenState, ImageWithSeqNum
 
 from prismatic.extern.hf.configuration_prismatic import OpenVLAConfig
 from prismatic.extern.hf.modeling_prismatic import OpenVLAForActionPrediction_MMNv1
 from prismatic.extern.hf.processing_prismatic import PrismaticImageProcessor, PrismaticProcessor
+from prismatic.models.action_heads import L1RegressionActionHead_idcat
 from prismatic.models.backbones.llm.prompting import PurePromptBuilder
 from prismatic.models.small_head import Proj_Actiontokens
 from prismatic.training.train_utils import get_current_action_mask, get_next_actions_mask
@@ -29,6 +31,8 @@ VLA_PATH = os.path.expanduser("~/capstone/code/asyncvla/AsyncVLA/AsyncVLA_releas
 RESUME_STEP = 750000
 DEFAULT_GOAL = "Go to the yellow bin"
 DEVICE_TYPE = "cuda"
+METRIC_WAYPOINT_SPACING = 0.1  # metres per waypoint unit (matches sys1)
+SYS2_RATE_HZ = 5.0
 
 
 class Sys2(Node):
@@ -37,8 +41,8 @@ class Sys2(Node):
         self.get_logger().info("[AsyncVLA Sys2] initialising...")
 
         # Load model
-        vla, action_proj, device, num_patches, action_tokenizer, processor = _load_model(VLA_PATH, RESUME_STEP)
-        self.inference = Inference(vla, action_proj, device, num_patches, action_tokenizer, processor)
+        vla, action_proj, action_head, device, num_patches, action_tokenizer, processor = _load_model(VLA_PATH, RESUME_STEP)
+        self.inference = Inference(vla, action_proj, action_head, device, num_patches, action_tokenizer, processor)
         self.get_logger().info("[AsyncVLA Sys2] Model loaded")
 
         self.declare_parameter("goal", DEFAULT_GOAL)
@@ -49,8 +53,13 @@ class Sys2(Node):
         use_sim = bool(self.get_parameter("use_sim").value)
         self._sim_seq_num = 0
 
+        # Latest observation (updated by img_callback, consumed by timer_callback)
+        self.latest_img = None
+        self.latest_img_seq_num = None
+
         # Publishers
         self.hidden_state_pub = self.create_publisher(AsyncHiddenState, "/asyncvla/hidden_state", 1)
+        self.omni_action_chunk_pub = self.create_publisher(ActionChunk, "/asyncvla/omni_action_chunk", 1)
 
         # Subscribers
         self.bridge = CvBridge()
@@ -58,6 +67,9 @@ class Sys2(Node):
             self.create_subscription(Image, "/cam", self.sim_img_callback, 1)
         else:
             self.create_subscription(ImageWithSeqNum, "/cam", self.img_callback, 1)
+
+        self.create_timer(1.0 / SYS2_RATE_HZ, self.timer_callback)
+        self.get_logger().info(f"[AsyncVLA Sys2] Triggering main loop at {SYS2_RATE_HZ} Hz...")
 
     def sim_img_callback(self, msg: Image):
         wrapped = ImageWithSeqNum()
@@ -68,24 +80,47 @@ class Sys2(Node):
         self.img_callback(wrapped)
 
     def img_callback(self, msg: ImageWithSeqNum):
-        img = PILImage.fromarray(self.bridge.imgmsg_to_cv2(msg.img, desired_encoding="rgb8"))
+        """Stash latest frame; inference runs on the timer, not here."""
+        self.latest_img = PILImage.fromarray(self.bridge.imgmsg_to_cv2(msg.img, desired_encoding="rgb8"))
+        self.latest_img_seq_num = msg.img_seq_num
 
-        actions = self.inference.run(img, self.goal_text)
+    def timer_callback(self):
+        img = self.latest_img
+        seq_num = self.latest_img_seq_num
+        if img is None:
+            return
+
+        projected, omni_actions = self.inference.run(img, self.goal_text)
 
         hidden_state_msg = AsyncHiddenState()
         hidden_state_msg.header.stamp = self.get_clock().now().to_msg()
-        hidden_state_msg.img_seq_num = msg.img_seq_num
-
-        hidden_state_msg.hidden_states.data = actions.reshape(-1).astype(np.float32).tolist()
+        hidden_state_msg.img_seq_num = seq_num
+        hidden_state_msg.hidden_states.data = projected.reshape(-1).astype(np.float32).tolist()
 
         self.hidden_state_pub.publish(hidden_state_msg)
-        self.get_logger().info(f"[AsyncVLA Sys2] Published hidden state for img_seq={hidden_state_msg.img_seq_num}")
+        self._publish_omni_action_chunk(omni_actions, seq_num)
+        self.get_logger().info(f"[AsyncVLA Sys2] Published hidden state + omni actions for img_seq={seq_num}")
+
+    def _publish_omni_action_chunk(self, omni_actions: np.ndarray, img_seq_num: int):
+        """Publish the base VLA's own action prediction (before edge-adapter refinement)."""
+        poses = _delta_to_pose_np(omni_actions)  # (1, T, 4)
+        chunk = ActionChunk()
+        chunk.header.stamp = self.get_clock().now().to_msg()
+        chunk.seq_num = img_seq_num
+        for t in range(poses.shape[1]):
+            pose = Pose2D()
+            pose.x = float(poses[0, t, 0]) * METRIC_WAYPOINT_SPACING
+            pose.y = -float(poses[0, t, 1]) * METRIC_WAYPOINT_SPACING  # sign flip mirrors sys1
+            pose.theta = float(np.arctan2(poses[0, t, 3], poses[0, t, 2]))
+            chunk.relative_poses.append(pose)
+        self.omni_action_chunk_pub.publish(chunk)
 
 
 class Inference:
-    def __init__(self, vla, action_proj, device, num_patches, action_tokenizer, processor):
+    def __init__(self, vla, action_proj, action_head, device, num_patches, action_tokenizer, processor):
         self.vla = vla
         self.action_proj = action_proj
+        self.action_head = action_head
         self.device = device
         self.num_patches = num_patches
         self.action_tokenizer = action_tokenizer
@@ -93,7 +128,8 @@ class Inference:
         # TODO: uncomment and pass pose_projector here when enabling proprio conditioning
         # self.pose_projector = pose_projector
 
-    def run(self, img: PILImage.Image, goal_text: str) -> np.ndarray:
+    def run(self, img: PILImage.Image, goal_text: str):
+        """Return (projected_hidden_state, omni_actions) as (float32 numpy, float32 numpy)."""
         batch = self._prepare_batch(img, goal_text)
         return self._forward(batch)
 
@@ -159,9 +195,14 @@ class Inference:
         actions_hidden = text_hidden[action_mask].reshape(batch_size, NUM_ACTIONS_CHUNK * ACTION_DIM, -1).to(torch.bfloat16)
 
         with torch.no_grad():
-            projected = self.action_proj.predict_action(actions_hidden.detach(), modality_id.to(torch.bfloat16))
+            mid_bf16 = modality_id.to(torch.bfloat16)
+            projected = self.action_proj.predict_action(actions_hidden.detach(), mid_bf16)
+            omni_actions = self.action_head.predict_action(actions_hidden.detach(), mid_bf16)
 
-        return projected.detach().to(torch.float32).cpu().numpy()
+        return (
+            projected.detach().to(torch.float32).cpu().numpy(),
+            omni_actions.detach().to(torch.float32).cpu().numpy(),
+        )
 
 
 def _remove_ddp_prefix(state_dict: dict) -> dict:
@@ -198,9 +239,31 @@ def _load_model(vla_path: str, resume_step: int):
     vla.vision_backbone.set_num_images_in_input(2)
     vla.to(dtype=torch.bfloat16, device=device)
 
+    # Skip vision encoding on the duplicated goal image.
+    # We also append a zero pose token so the total patch prefix is 513 tokens.
+    def _patched_process_vision(pixel_values, language_embeddings=None, use_film=False):
+        obs = pixel_values[:, :6]
+        img, img_fused = torch.split(obs, [3, 3], dim=1)
+        patches = vla.vision_backbone.featurizer(img)
+        patches_fused = vla.vision_backbone.fused_featurizer(img_fused)
+        single = torch.cat([patches, patches_fused], dim=2)
+        projected = vla.projector(single)          # (B, 256, llm_dim)
+        tiled = projected.repeat(1, 2, 1)          # (B, 512, llm_dim)
+        zero_pose = torch.zeros(
+            tiled.shape[0], 1, tiled.shape[2], dtype=tiled.dtype, device=tiled.device
+        )
+        return torch.cat([tiled, zero_pose], dim=1)  # (B, 513, llm_dim)
+    vla._process_vision_features = _patched_process_vision
+
     action_proj = Proj_Actiontokens(input_dim=vla.llm_dim, hidden_dim=vla.llm_dim, action_dim=1024)
     action_proj.load_state_dict(_load_checkpoint("action_proj", vla_path, resume_step))
     action_proj = action_proj.to(torch.bfloat16).to(device)
+
+    action_head = L1RegressionActionHead_idcat(
+        input_dim=vla.llm_dim, hidden_dim=vla.llm_dim, action_dim=ACTION_DIM
+    )
+    action_head.load_state_dict(_load_checkpoint("action_head", vla_path, resume_step))
+    action_head = action_head.to(torch.bfloat16).to(device).eval()
 
     # TODO: uncomment to load pose_projector and enable proprio conditioning (see _forward TODO).
     # from prismatic.models.projectors import ProprioProjector
@@ -212,12 +275,33 @@ def _load_model(vla_path: str, resume_step: int):
     num_patches = (
         vla.vision_backbone.get_num_patches()
         * vla.vision_backbone.get_num_images_in_input()
-        # TODO: uncomment the line below if enabling proprio conditioning above
-        # + 1  # extra token inserted by proprio_projector
+        + 1  # pose slot appended in _patched_process_vision; matches training layout
     )
     action_tokenizer = ActionTokenizer(processor.tokenizer)
 
-    return vla, action_proj, device, num_patches, action_tokenizer, processor
+    return vla, action_proj, action_head, device, num_patches, action_tokenizer, processor
+
+
+def _delta_to_pose_np(delta: np.ndarray) -> np.ndarray:
+    """Integrate per-step deltas (N, T, 4) into absolute robot-frame poses (N, T, 4).
+
+    Matches sys1._delta_to_pose but operates on numpy. Each step:
+    [dx, dy, cos(dtheta), sin(dtheta)] → running (x, y, cos(theta), sin(theta)).
+    """
+    dx = delta[..., 0]
+    dy = delta[..., 1]
+    dtheta = np.arctan2(delta[..., 3], delta[..., 2])
+    N, T = dx.shape
+
+    x, y, theta = dx[:, 0].copy(), dy[:, 0].copy(), dtheta[:, 0].copy()
+    poses = [np.stack([x, y, np.cos(theta), np.sin(theta)], axis=-1)]
+    for t in range(1, T):
+        ct, st = np.cos(theta), np.sin(theta)
+        x = x + ct * dx[:, t] - st * dy[:, t]
+        y = y + st * dx[:, t] + ct * dy[:, t]
+        theta = theta + dtheta[:, t]
+        poses.append(np.stack([x, y, np.cos(theta), np.sin(theta)], axis=-1))
+    return np.stack(poses, axis=1)
 
 
 def main(args=None):

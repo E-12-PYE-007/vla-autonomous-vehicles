@@ -26,9 +26,11 @@ OBS_ENCODING_SIZE = 1024
 MHA_NUM_ATTENTION_HEADS = 4
 MHA_NUM_ATTENTION_LAYERS = 4
 MHA_FF_DIM_FACTOR = 4
+IMAGE_INTERMEDIATE_SIZE = (224, 224)  # PIL resize before tensor resize (matches reference)
 IMAGE_SIZE = (96, 96)
-METRIC_WAYPOINT_SPACING = 0.1  # metres per waypoint unit
+METRIC_WAYPOINT_SPACING = 0.1 
 IMAGE_BUFFER_SIZE = 80  # 8 secs worth of data
+SYS1_RATE_HZ = 8.0
 
 
 _normalise = transforms.Normalize(
@@ -70,8 +72,7 @@ class Sys1(Node):
         else:
             self.create_subscription(ImageWithSeqNum, "/cam", self.img_callback, 1)
 
-        # Run sys1 at 3Hz
-        self.create_timer(1.0 / 3.0, self.timer_callback)
+        self.create_timer(1.0 / SYS1_RATE_HZ, self.timer_callback)
         self.get_logger().info("[AsyncVLA Sys1] Triggering main control loop...")
 
     def sim_img_callback(self, msg: Image):
@@ -162,6 +163,7 @@ def _load_model(shead_path: str, resume_step: int):
 
 
 def _process_image(img: PILImage.Image, device: torch.device) -> torch.Tensor:
+    img = img.resize(IMAGE_INTERMEDIATE_SIZE, PILImage.BILINEAR)
     tensor = TF.to_tensor(img)
     tensor = TF.resize(tensor, list(IMAGE_SIZE)).unsqueeze(0)
     return _normalise(tensor).to(device).to(torch.bfloat16)
