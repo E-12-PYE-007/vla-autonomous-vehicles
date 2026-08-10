@@ -58,6 +58,9 @@ class Sys1(Node):
         self.img_buffer_keys = deque(maxlen=IMAGE_BUFFER_SIZE)
         self.latest_hidden_state = None
         self.latest_hidden_seq_num = None
+        # Carried through from sys2 for logging only.
+        self.latest_hidden_end_seq_num = None
+        self.latest_sys2_inference_ms = 0.0
 
         # Publishers
         self.action_chunk_pub = self.create_publisher(ActionChunk, "/asyncvla/action_chunk", 1)
@@ -84,6 +87,8 @@ class Sys1(Node):
     def hidden_state_callback(self, msg: AsyncHiddenState):
         self.latest_hidden_state = torch.tensor(msg.hidden_states.data, dtype=torch.float32).reshape(1, 8, 1024).to(torch.bfloat16).to(self.device)
         self.latest_hidden_seq_num = msg.img_seq_num
+        self.latest_hidden_end_seq_num = msg.end_img_seq_num
+        self.latest_sys2_inference_ms = msg.inference_ms
 
     def timer_callback(self):
         projected_actions = self.latest_hidden_state
@@ -93,18 +98,30 @@ class Sys1(Node):
         # Captured alongside curr_img so the two stay paired even if a new frame
         # arrives between now and publish_action_chunk.
         curr_img_seq_num = self.curr_img_seq_num
+        # Same reason: keep these with the hidden state they describe.
+        end_img_seq_num = self.latest_hidden_end_seq_num
+        sys2_inference_ms = self.latest_sys2_inference_ms
 
         if projected_actions is None or curr_img is None or past_img is None:
             return
 
         poses = self.inference.run(curr_img, past_img, projected_actions)
-        self.publish_action_chunk(poses, seq_num, curr_img_seq_num)
+        self.publish_action_chunk(poses, seq_num, curr_img_seq_num, end_img_seq_num, sys2_inference_ms)
 
-    def publish_action_chunk(self, poses: np.ndarray, img_seq_num: int, curr_img_seq_num: int):
+    def publish_action_chunk(
+        self,
+        poses: np.ndarray,
+        img_seq_num: int,
+        curr_img_seq_num: int,
+        end_img_seq_num: int,
+        sys2_inference_ms: float,
+    ):
         chunk = ActionChunk()
         chunk.header.stamp = self.get_clock().now().to_msg()
         chunk.seq_num = img_seq_num
         chunk.curr_img_seq_num = curr_img_seq_num
+        chunk.end_img_seq_num = end_img_seq_num
+        chunk.sys2_inference_ms = sys2_inference_ms
 
         for t in range(poses.shape[1]):
             pose = Pose2D()

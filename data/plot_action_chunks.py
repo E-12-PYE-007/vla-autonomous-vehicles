@@ -35,22 +35,33 @@ def resolve_image(column: str, source: str | None = None) -> tuple[Path, str] | 
     return resolved, img_seq
 
 
-# "image_path" is the frame at seq_num, shared by sys1 and sys2 (sys1's hidden
-# state input and sys2's only input). "curr_image_path" is sys1's extra, newer
-# frame (sys1 runs faster than sys2, so a fresher /cam frame is usually available
-# by the time it publishes) -- for sys2 it's identical to image_path.
+# The three frames spanning one sys2 inference:
+#   image_path      -- what went into sys2, and the frame sys1 looks up for its hidden
+#                      state input. Shared by both.
+#   end_image_path  -- newest frame to arrive by the time sys2's forward pass returned.
+#   curr_image_path -- what sys1 actually paired with at its own tick (it runs faster
+#                      than sys2, so this is usually fresher still). Equals image_path
+#                      for sys2, which only conditions on one frame.
+# Any of them can coincide; duplicates are dropped so a panel is only shown per distinct
+# frame.
 past_image = resolve_image("image_path")
+end_image = resolve_image("end_image_path", source="sys1")
 curr_image = resolve_image("curr_image_path", source="sys1")
-if curr_image == past_image:
-    curr_image = None
+
+labelled = [
+    (past_image, "Into sys2 / sys1 hidden state input"),
+    (end_image, "Newest when sys2 finished"),
+    (curr_image, "What sys1 paired with"),
+]
 
 images = []
-if past_image is not None:
-    path, img_seq = past_image
-    images.append((path, f"Frame at img_seq={img_seq} (sys1 hidden state input, sys2's only input)"))
-if curr_image is not None:
-    path, img_seq = curr_image
-    images.append((path, f"sys1's newer frame, img_seq={img_seq}"))
+seen = set()
+for resolved, label in labelled:
+    if resolved is None or resolved in seen:
+        continue
+    seen.add(resolved)
+    path, img_seq = resolved
+    images.append((path, f"{label}\nimg_seq={img_seq}"))
 
 n_img = len(images)
 if n_img == 0:
@@ -67,7 +78,13 @@ colors = {"sys1": "tab:blue", "sys2": "tab:orange"}
 markers = {"sys1": "o", "sys2": "s"}
 for source, sub in df.groupby("source"):
     sub = sub.sort_values("waypoint_idx")
-    ax.plot(sub["x"], sub["y"], color=colors[source], marker=markers[source],
+    # The action head only outputs the 8 future waypoints, not the robot's own
+    # current pose, so waypoint_idx 0 is already offset from (0, 0). Prepend the
+    # origin so the line starts where the robot actually is (matches upstream
+    # run_omnivla.py / run_asyncvla.py, which np.insert a (0, 0) start point).
+    xs = [0.0] + sub["x"].tolist()
+    ys = [0.0] + sub["y"].tolist()
+    ax.plot(xs, ys, color=colors[source], marker=markers[source],
             markersize=8, linewidth=1.5, label=source)
     for _, row in sub.iterrows():
         ax.annotate(int(row["waypoint_idx"]), (row["x"], row["y"]),
@@ -86,8 +103,15 @@ if "goal" in df.columns:
     if not goals.empty:
         goal_text = goals.iloc[0]
 
-if goal_text:
-    fig.suptitle(f'Goal: "{goal_text}"', fontsize=13)
+suptitle = f'Goal: "{goal_text}"' if goal_text else None
+if "sys2_inference_ms" in df.columns:
+    ms = df["sys2_inference_ms"].dropna()
+    if not ms.empty and ms.iloc[0] > 0:
+        detail = f"sys2 inference: {ms.iloc[0]:.0f} ms"
+        suptitle = f"{suptitle}    ({detail})" if suptitle else detail
+
+if suptitle:
+    fig.suptitle(suptitle, fontsize=13)
 
 fig.tight_layout()
 

@@ -2,6 +2,8 @@
 
 import os
 from functools import lru_cache
+from threading import Lock
+
 import numpy as np
 import torch
 from PIL import Image as PILImage
@@ -9,6 +11,8 @@ from torch.nn.utils.rnn import pad_sequence
 
 import rclpy
 from cv_bridge import CvBridge
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
+from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from geometry_msgs.msg import Pose2D
 from custom_msgs.msg import ActionChunk, AsyncHiddenState, ImageWithSeqNum
@@ -49,7 +53,9 @@ class Sys2(Node):
         self.goal_text = self.get_parameter("goal").get_parameter_value().string_value
         self.get_logger().info(f"[AsyncVLA Sys2] Goal set as: '{self.goal_text}'")
 
-        # Latest observation (updated by img_callback, consumed by timer_callback)
+        # Latest observation; locked because img_callback and timer_callback run on
+        # different executor threads.
+        self._img_lock = Lock()
         self.latest_img = None
         self.latest_img_seq_num = None
 
@@ -57,42 +63,68 @@ class Sys2(Node):
         self.hidden_state_pub = self.create_publisher(AsyncHiddenState, "/asyncvla/hidden_state", 1)
         self.omni_action_chunk_pub = self.create_publisher(ActionChunk, "/asyncvla/omni_action_chunk", 1)
 
-        # Subscribers
+        # Subscribers. /cam gets its own callback group so frames keep arriving during
+        # the forward pass; see main().
         self.bridge = CvBridge()
-        self.create_subscription(ImageWithSeqNum, "/cam", self.img_callback, 1)
+        self.create_subscription(
+            ImageWithSeqNum, "/cam", self.img_callback, 1,
+            callback_group=MutuallyExclusiveCallbackGroup(),
+        )
 
-        self.create_timer(1.0 / SYS2_RATE_HZ, self.timer_callback)
+        self.create_timer(
+            1.0 / SYS2_RATE_HZ, self.timer_callback,
+            callback_group=MutuallyExclusiveCallbackGroup(),
+        )
         self.get_logger().info(f"[AsyncVLA Sys2] Triggering main loop at {SYS2_RATE_HZ} Hz...")
 
     def img_callback(self, msg: ImageWithSeqNum):
         """Stash latest frame; inference runs on the timer, not here."""
-        self.latest_img = PILImage.fromarray(self.bridge.imgmsg_to_cv2(msg.img, desired_encoding="rgb8"))
-        self.latest_img_seq_num = msg.img_seq_num
+        img = PILImage.fromarray(self.bridge.imgmsg_to_cv2(msg.img, desired_encoding="rgb8"))
+        with self._img_lock:
+            self.latest_img = img
+            self.latest_img_seq_num = msg.img_seq_num
 
     def timer_callback(self):
-        img = self.latest_img
-        seq_num = self.latest_img_seq_num
+        with self._img_lock:
+            img = self.latest_img
+            seq_num = self.latest_img_seq_num
         if img is None:
             return
 
+        # Node clock, so it follows use_sim_time if that is ever enabled.
+        start = self.get_clock().now()
         projected, omni_actions = self.inference.run(img, self.goal_text)
+        inference_ms = (self.get_clock().now() - start).nanoseconds / 1e6
+
+        # Newest frame to land during the forward pass.
+        with self._img_lock:
+            end_seq_num = self.latest_img_seq_num
 
         hidden_state_msg = AsyncHiddenState()
         hidden_state_msg.header.stamp = self.get_clock().now().to_msg()
         hidden_state_msg.img_seq_num = seq_num
+        hidden_state_msg.end_img_seq_num = end_seq_num
+        hidden_state_msg.inference_ms = inference_ms
         hidden_state_msg.hidden_states.data = projected.reshape(-1).astype(np.float32).tolist()
 
         self.hidden_state_pub.publish(hidden_state_msg)
-        self._publish_omni_action_chunk(omni_actions, seq_num)
-        self.get_logger().info(f"[AsyncVLA Sys2] Published hidden state + omni actions for img_seq={seq_num}")
+        self._publish_omni_action_chunk(omni_actions, seq_num, end_seq_num, inference_ms)
+        self.get_logger().info(
+            f"[AsyncVLA Sys2] Published hidden state + omni actions for img_seq={seq_num} "
+            f"(newest at finish: {end_seq_num}, {inference_ms:.0f}ms)"
+        )
 
-    def _publish_omni_action_chunk(self, omni_actions: np.ndarray, img_seq_num: int):
+    def _publish_omni_action_chunk(
+        self, omni_actions: np.ndarray, img_seq_num: int, end_img_seq_num: int, inference_ms: float
+    ):
         """Publish the base VLA's own action prediction (before edge-adapter refinement)."""
         poses = omni_actions  # (1, T, 4); action_head output is already absolute poses, no delta_to_pose needed
         chunk = ActionChunk()
         chunk.header.stamp = self.get_clock().now().to_msg()
         chunk.seq_num = img_seq_num
         chunk.curr_img_seq_num = img_seq_num  # sys2 only conditions on one frame
+        chunk.end_img_seq_num = end_img_seq_num
+        chunk.sys2_inference_ms = inference_ms
         for t in range(poses.shape[1]):
             pose = Pose2D()
             # y passed through unmirrored — matches sys1's convention (see sys1.publish_action_chunk).
@@ -278,10 +310,15 @@ def main(args=None):
     rclpy.init(args=args)
 
     sys2_node = Sys2()
-    rclpy.spin(sys2_node)
-
-    sys2_node.destroy_node()
-    rclpy.shutdown()
+    # MultiThreaded so /cam is still serviced while timer_callback blocks in the forward
+    # pass. Single-threaded, end_img_seq_num would always just echo img_seq_num.
+    executor = MultiThreadedExecutor()
+    executor.add_node(sys2_node)
+    try:
+        executor.spin()
+    finally:
+        sys2_node.destroy_node()
+        rclpy.shutdown()
 
 
 if __name__ == "__main__":

@@ -14,15 +14,19 @@ The /cam frame matching a chunk's seq_num (chunk.seq_num == img_seq_num, see
 cam_seq_bridge.py) is saved once to <output_dir>/images_<run_id>/seq_<N>.jpg,
 so the same run's action-chunk plot can show what the model actually saw.
 
-sys1 additionally conditions on a second, newer frame (curr_img_seq_num) that
-usually differs from seq_num since sys1 runs faster than sys2 and a fresher
-/cam frame is normally available by the time it publishes. sys2 sets
-curr_img_seq_num == seq_num, since it only has the one frame. That second
-frame is saved the same way and logged as curr_image_path.
+Three frames span one sys2 inference, all saved the same way:
+    seq_num          what went into sys2, and sys1's hidden state input
+    end_img_seq_num  newest frame once sys2's forward pass returned
+    curr_img_seq_num what sys1 actually paired with (fresher still; sys1 is faster)
+sys2 sets curr_img_seq_num == seq_num, since it only conditions on one frame.
 
-CSV columns:
-    stamp_sec, source, seq_num, waypoint_idx, x, y, theta, image_path,
-    curr_image_path, goal
+Writes two files:
+    action_chunks_<run_id>.csv
+        stamp_sec, source, seq_num, waypoint_idx, x, y, theta, image_path,
+        curr_image_path, end_image_path, sys2_inference_ms, goal
+    frame_times_<run_id>.csv
+        img_seq_num, arrival_sec -- join on img_seq_num to turn a gap between
+        sequence numbers into an actual elapsed time.
 """
 
 import csv
@@ -63,9 +67,17 @@ class StoreActionChunksNode(Node):
         self._writer = csv.writer(self._file)
         self._writer.writerow([
             "stamp_sec", "source", "seq_num", "waypoint_idx", "x", "y", "theta",
-            "image_path", "curr_image_path", "goal",
+            "image_path", "curr_image_path", "end_image_path", "sys2_inference_ms", "goal",
         ])
         self._file.flush()
+
+        # seq_num identifies frames but says nothing about elapsed time; join on
+        # img_seq_num to turn a gap between sequence numbers into a duration.
+        self.frames_csv_path = os.path.join(output_dir, f"frame_times_{run_id}.csv")
+        self._frames_file = open(self.frames_csv_path, "w", newline="")
+        self._frames_writer = csv.writer(self._frames_file)
+        self._frames_writer.writerow(["img_seq_num", "arrival_sec"])
+        self._frames_file.flush()
 
         self._lock = Lock()
         self._latest_sys1 = None
@@ -95,11 +107,16 @@ class StoreActionChunksNode(Node):
 
     def _img_callback(self, msg: ImageWithSeqNum):
         frame = self._bridge.imgmsg_to_cv2(msg.img, desired_encoding="bgr8")
+        # Node clock, matching stamp_sec. Not msg.header.stamp, which is sim time here
+        # while this node runs with use_sim_time unset.
+        arrival_sec = self.get_clock().now().nanoseconds / 1e9
         with self._img_lock:
             if len(self._img_buffer_keys) == IMAGE_BUFFER_SIZE:
                 self._img_buffer.pop(self._img_buffer_keys[0], None)
             self._img_buffer_keys.append(msg.img_seq_num)
             self._img_buffer[msg.img_seq_num] = frame
+        self._frames_writer.writerow([msg.img_seq_num, f"{arrival_sec:.6f}"])
+        self._frames_file.flush()
 
     def _save_chunk_image(self, seq_num: int) -> str:
         """Save the /cam frame for seq_num once, returning its path (or "" if unavailable)."""
@@ -136,6 +153,7 @@ class StoreActionChunksNode(Node):
     def _write_chunk(self, stamp_sec: float, source: str, msg: ActionChunk):
         image_path = self._save_chunk_image(msg.seq_num)
         curr_image_path = self._save_chunk_image(msg.curr_img_seq_num)
+        end_image_path = self._save_chunk_image(msg.end_img_seq_num)
         for idx, pose in enumerate(msg.relative_poses):
             self._writer.writerow([
                 f"{stamp_sec:.6f}",
@@ -147,12 +165,15 @@ class StoreActionChunksNode(Node):
                 f"{pose.theta:.6f}",
                 image_path,
                 curr_image_path,
+                end_image_path,
+                f"{msg.sys2_inference_ms:.3f}",
                 self.goal_text,
             ])
 
     def destroy_node(self):
         try:
             self._file.close()
+            self._frames_file.close()
         finally:
             super().destroy_node()
 
