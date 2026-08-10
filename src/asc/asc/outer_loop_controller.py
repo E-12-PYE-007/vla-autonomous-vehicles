@@ -22,6 +22,10 @@ MAX_LINEAR_SPEED = 0.3
 MAX_ANGULAR_SPEED = 1.20
 COMMAND_TIMEOUT_SEC = 0.75
 K_CROSS_TRACK = 1.6
+# Upstream's run_action_head.pd_controller steers purely from lateral error
+# (arctan(dy/dx)) and never uses per-waypoint heading. sys1's pose.theta has no
+# reference sign convention, and mixing it with the mirrored y made the two terms
+# disagree about which way to turn. Steer from cross-track error alone.
 K_HEADING = 1.0
 GOAL_TOLERANCE = 0.05
 CONTROL_RATE_HZ = 10.0

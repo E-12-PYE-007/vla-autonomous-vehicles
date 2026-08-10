@@ -94,8 +94,9 @@ class Sys2(Node):
         chunk.seq_num = img_seq_num
         for t in range(poses.shape[1]):
             pose = Pose2D()
+            # y passed through unmirrored — matches sys1's convention (see sys1.publish_action_chunk).
             pose.x = float(poses[0, t, 0]) * METRIC_WAYPOINT_SPACING
-            pose.y = -float(poses[0, t, 1]) * METRIC_WAYPOINT_SPACING  # sign flip mirrors sys1
+            pose.y = float(poses[0, t, 1]) * METRIC_WAYPOINT_SPACING
             pose.theta = float(np.arctan2(poses[0, t, 3], poses[0, t, 2]))
             chunk.relative_poses.append(pose)
         self.omni_action_chunk_pub.publish(chunk)

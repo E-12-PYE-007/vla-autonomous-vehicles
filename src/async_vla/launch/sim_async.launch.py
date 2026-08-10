@@ -2,9 +2,9 @@
 """AsyncVLA in simulation, everything on one machine.
 
 Brings up the simulator, the asc control nodes and the AsyncVLA inference nodes. The
-controller is pinned to outer_loop_controller here — tic_controller's 1.0 m lookahead
-oversteers badly on AsyncVLA's shorter chunks, and having picked the wrong one by
-default has cost real debugging time before.
+controller is pinned to async_pd_controller here — this is the reference PD controller
+that matches the AsyncVLA paper (waypoint index 4, "reach in DT seconds" law with
+turn-shape-preserving velocity limits).
 
 Run from a shell with the asyncvla conda env active, since the sys1/sys2 wrapper scripts
 resolve their interpreter from PATH:
@@ -70,7 +70,7 @@ def generate_launch_description():
                 PythonLaunchDescriptionSource(asc_sim_launch),
                 launch_arguments={
                     "sim": LaunchConfiguration("sim"),
-                    "controller": "outer_loop_controller",
+                    "controller": "async_pd_controller",
                 }.items(),
             ),
             # --- Inference ---

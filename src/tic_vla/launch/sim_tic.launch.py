@@ -1,9 +1,29 @@
 #!/usr/bin/env python3
-"""TIC-VLA sim launch — Gazebo + control nodes + inference nodes (single machine).
+"""TIC-VLA in simulation, everything on one machine.
 
-Usage:
-    ros2 launch tic_vla sim_tic.launch.py
-    ros2 launch tic_vla sim_tic.launch.py worldfile:=unempty_office_square.sdf
+Brings up the simulator, the asc control nodes and the TIC-VLA inference nodes. The
+controller is pinned to tic_controller here — it is a port of TIC-VLA's benchmark driver
+(V_MAX 0.30, 1.0 m arc-length lookahead, bearing feedback + curvature feedforward) and is
+not interchangeable with AsyncVLA's.
+
+Run from a shell with the tic-vla conda env active, since the sys1/sys2 wrapper scripts
+resolve their interpreter from PATH:
+
+    conda activate tic-vla
+
+    ros2 launch tic_vla sim_tic.launch.py device:=dsk
+    ros2 launch tic_vla sim_tic.launch.py device:=dsk sim:=isaac
+    ros2 launch tic_vla sim_tic.launch.py device:=rcp goal:="Find the red door"
+
+sim:=gazebo starts Gazebo here. sim:=isaac expects Isaac to be running already,
+publishing sensor_msgs/Image on /cam_raw and nav_msgs/Odometry on /sim_odom, and
+subscribing geometry_msgs/Twist on /cmd_vel.
+
+The controller is fixed here; change it in asc_sim.launch.py, which this includes.
+
+For hardware, or to split sim and inference across two machines, use asc_tic.launch.py
+instead.
+
 """
 
 import os
@@ -13,74 +33,51 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
-from launch_ros.actions import Node
 
 
 def generate_launch_description():
-    worldfile = LaunchConfiguration("worldfile")
-
-    earthrover_bringup_launch = os.path.join(
-        get_package_share_directory("earthrover_vla_bringup"),
-        "launch",
-        "launch.py",
+    asc_sim_launch = os.path.join(
+        get_package_share_directory("asc"), "launch", "asc_sim.launch.py"
+    )
+    tic_inference_launch = os.path.join(
+        get_package_share_directory("tic_vla"), "launch", "asc_tic.launch.py"
     )
 
     return LaunchDescription(
         [
             DeclareLaunchArgument(
-                "worldfile",
-                default_value="unempty_office_square.sdf",
-                description="Gazebo world file (relative to earthrover_vla_simulation/worlds/templates).",
+                "device",
+                default_value="dsk",
+                description="Which machine this is running on: dsk | rcp. Selects the "
+                            "model paths and the node wrapper scripts.",
             ),
             DeclareLaunchArgument(
-                "instruction",
+                "sim",
+                default_value="gazebo",
+                choices=["gazebo", "isaac"],
+                description="Which simulator to pair with. gazebo is started here; isaac "
+                            "runs separately and only needs the camera bridge.",
+            ),
+            DeclareLaunchArgument(
+                "goal",
                 default_value="Go to the yellow bin.",
                 description="Language instruction for TIC-VLA.",
             ),
-            # --- Simulator ---
+            # --- Simulator + control ---
             IncludeLaunchDescription(
-                PythonLaunchDescriptionSource(earthrover_bringup_launch),
+                PythonLaunchDescriptionSource(asc_sim_launch),
                 launch_arguments={
-                    "mode": "sim",
-                    "worldfile": worldfile,
+                    "sim": LaunchConfiguration("sim"),
+                    "controller": "tic_controller",
                 }.items(),
             ),
-            # --- ASC control nodes (sim mode) ---
-            Node(
-                package="asc",
-                executable="odometry",
-                name="encoder_odometry",
-                output="screen",
-                parameters=[{"use_sim": True}],
-            ),
-            Node(
-                package="asc",
-                executable="outer_loop_controller",
-                name="odom_action_chunk_tracker",
-                output="screen",
-                parameters=[{"use_sim": True}],
-            ),
-            # --- TIC-VLA inference nodes ---
-            Node(
-                package="tic_vla",
-                executable="image_processing",
-                name="tic_vla_image_processing",
-                output="screen",
-                parameters=[{"use_sim": True}],
-            ),
-            Node(
-                package="tic_vla",
-                executable="sys2",
-                name="sys2",
-                output="screen",
-                parameters=[{"instruction": LaunchConfiguration("instruction")}, {"use_sim": True}],
-            ),
-            Node(
-                package="tic_vla",
-                executable="sys1",
-                name="sys1",
-                output="screen",
-                parameters=[{"use_sim": True}],
+            # --- Inference ---
+            IncludeLaunchDescription(
+                PythonLaunchDescriptionSource(tic_inference_launch),
+                launch_arguments={
+                    "device": LaunchConfiguration("device"),
+                    "goal": LaunchConfiguration("goal"),
+                }.items(),
             ),
         ]
     )

@@ -118,64 +118,250 @@ ros2 launch earthrover_vla_bringup launch.py hardware:=true
 - The world file currently used by simulation is `empty_world_cam.sdf`.
 - The top-level bringup script is intentionally simple and acts as the mode selector for future sim and hardware launch paths.
 
-# AsyncVLA ROS 2 Integration
-The system:
-- takes camera input
-- accepts a goal (text or image)
-- runs AsyncVLA inference
-- outputs velocity commands (/cmd_vel)
+---
+# Running the VLA Models (`async_vla` / `tic_vla`)
 
-## System Overview 
+Two vision-language-action models run as ROS 2 inference nodes:
 
-The pipeline consists of three main ROS 2 nodes:
+- **AsyncVLA** (`async_vla`) — `sys2` backbone VLA + `sys1` edge adapter
+- **TIC-VLA** (`tic_vla`) — `image_processing` + `sys2` VLM backbone + `sys1` action expert
 
-1. Goal Publisher Node
+This workspace holds the ROS 2 wrappers. The model code lives in separate upstream repos,
+cloned alongside it.
 
-- Publishes a goal to the system:
-    Text goal (e.g. "go to the red object")
-    Image goal (reference image)
-- Topic: /asyncvla/goal
+Both models publish to the same controller topics, so run one at a time.
 
-2. AsyncVLA Inference Node
+## Machines
 
-- Subscribes to:
-    camera images (/cam)
-    goal (/asyncvla/goal)
-- Runs AsyncVLA model
-- Outputs predicted trajectory
-- Publishes: /asyncvla/action_chunk
+Selected at launch time with `device:=`:
 
-3. Controller Node
+| `device:=` | Machine |
+| --- | --- |
+| `dsk` | Lab desktop (`vla-cap` user), on the robot's local network |
+| `rcp` | Remote uni desktop, reached over SSH; starts its own zenoh router |
 
-- Converts predicted trajectory → robot motion
-- Uses a lookahead + proportional controller
-- Outputs velocity commands
-- Publishes: /cmd_vel
+Two launch files per package:
 
-## Launch exmaple
+```
+async_vla/launch/asc_async.launch.py   tic_vla/launch/asc_tic.launch.py    # inference nodes
+async_vla/launch/sim_async.launch.py   tic_vla/launch/sim_tic.launch.py    # inference + Gazebo + control
+```
 
-Using a text goal: 
+Each package has one copy of each node source file. Model paths come from a `DEVICE_PATHS`
+table at the top of each launch file and reach the nodes as ROS parameters. Adding a machine
+means adding a row to that table. An unrecognised `device:=` reports the valid options and
+stops.
 
-ros2 launch asyncvla_ros <your_launch_file>.py \goal_mode:=text \goal_text:="go to the chocolate bar"
+The `scripts/` wrappers come in `_rcp`/`_dsk` pairs, selected by `device:=`. They set the
+conda interpreter and `sys.path`, which Python resolves at import time, ahead of ROS
+parameters.
 
-Using an image goal:
+## 1. Clone The Model Repos
 
-ros2 launch asyncvla_ros <your_launch_file>.py \goal_mode:=image \image_path:=/home/<user>/goal.png
+```bash
+git clone <AsyncVLA repo> AsyncVLA
+cd AsyncVLA && git submodule update --init --recursive
 
-## Node Details
+git clone <TIC-VLA repo> TIC-VLA
+cd TIC-VLA && git submodule update --init --recursive
+```
 
-Goal Publisher Node
+Locations, matching `DEVICE_PATHS` in the launch files:
 
-Publishes a goal to the system. It can send either a text instruction (e.g., “go to the red object”) or an image representing the target. The goal is published once at startup to /asyncvla/goal, and the rest of the system uses this as the objective for navigation.
+| | rcp | dsk |
+| --- | --- | --- |
+| AsyncVLA repo | `/vla_storage/capstone/code/asyncvla/AsyncVLA` | `/home/vla-cap/AsyncVLA` |
+| AsyncVLA weights | `…/AsyncVLA/AsyncVLA_release` | `/home/vla-cap/AsyncVLA/AsyncVLA_release` |
+| TIC-VLA repo | `/vla_storage/capstone/code/ticvla/TIC-VLA` | `/home/vla-cap/capstone/code/ticvla/TIC-VLA` |
+| InternVL3-1B | `/vla_storage/capstone/code/ticvla/InternVL3-1B` | `/home/vla-cap/capstone/code/ticvla/InternVL3-1B` |
+| TIC-VLA ckpt | `/vla_storage/capstone/code/ticvla/TIC-VLA-model.ckpt` | `/home/vla-cap/capstone/code/ticvla/TIC-VLA-model.ckpt` |
 
-AsyncVLA Inference Node
+On rcp the weights live on `/vla_storage`, which has room for them.
 
-Acts as the core of the system. It subscribes to camera images and the goal, processes them, and runs the AsyncVLA model. The model predicts a short sequence of future relative poses (a trajectory), which is then published as an ActionChunk message on /asyncvla/action_chunk.
+## 2. Run The Setup Scripts
 
-Controller Node
+Each script initialises submodules, installs Miniconda if missing, creates the conda env,
+installs the Python package, and downloads the weights.
 
-Takes the predicted trajectory and converts it into robot motion commands. It selects a lookahead point from the trajectory, computes linear and angular velocities using a proportional control approach, applies smoothing and limits, and publishes the final commands to /cmd_vel.
+dsk:
 
-AsyncVLA Backend
+```bash
+bash tools/setup_asyncvla_desktop.bash
+bash tools/setup_ticvla_desktop.bash
+```
 
-Handles all interaction with the AsyncVLA model itself. It loads the model, prepares inputs (images, text, or pose goals), writes required image files, runs inference using the official AsyncVLA code, and converts the model output into a list of relative poses (x, y, θ) for the controller.
+rcp:
+
+```bash
+ASYNCVLA_BASE_DIR=/vla_storage/capstone/code/asyncvla bash tools/setup_asyncvla_desktop.bash
+TICVLA_BASE_DIR=/vla_storage/capstone/code/ticvla   bash tools/setup_ticvla_desktop.bash
+```
+
+Both are idempotent — re-run to resume an interrupted download.
+
+The scripts create two conda envs, `asyncvla` and `tic-vla`, both on Python 3.10, matching
+the Python that ROS 2 Humble's `rclpy` C extension is built for.
+
+Weights come from `NHirose/AsyncVLA_release`, `OpenGVLab/InternVL3-1B`, and
+`handsomeYun/TIC-VLA` (a dataset repo, file `TIC-VLA-model.ckpt`).
+
+## 3. Build The Workspace
+
+`custom_msgs` and `earthrover_vla_simulation` generate Python bindings against the active
+interpreter, so build them with conda deactivated to get ROS Humble's Python 3.10:
+
+```bash
+conda deactivate
+source /opt/ros/humble/setup.bash
+colcon build --symlink-install
+source install/setup.bash
+```
+
+Build with `--symlink-install` throughout, so colcon's symlinks stay consistent across
+packages.
+
+`--symlink-install` also makes edits to node `.py` files and launch files take effect
+directly. Rebuild after adding files to `scripts/` or `launch/`, or changing `setup.py`,
+`package.xml`, or `custom_msgs`.
+
+After rebuilding, source `install/setup.bash` in a new shell to pick up the current paths.
+
+## 4. Networking (rcp)
+
+dsk reaches the robot over the local network.
+
+For rcp, open the tunnel and leave it running:
+
+```bash
+ssh -L 7447:localhost:7447 <rcp address>
+```
+
+Edit both zenoh configs on both machines (root-owned, needs `sudo`):
+
+`/opt/ros/humble/share/rmw_zenoh_cpp/config/DEFAULT_RMW_ZENOH_ROUTER_CONFIG.json5`
+
+```json5
+listen: {
+  endpoints: ["tcp/localhost:7447"],
+},
+```
+
+`/opt/ros/humble/share/rmw_zenoh_cpp/config/DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5`
+
+```json5
+mode: "client",
+connect: {
+  endpoints: ["tcp/localhost:7447"],
+},
+```
+
+`rmw_zenoh_cpp` routes through a `rmw_zenohd` process. The launch files do **not** start it
+and do **not** set any environment — set both variables in the shell on each machine, and
+run the router yourself. They must match on both ends or the two graphs never meet.
+
+On rcp and on the machine it pairs with, in `~/.bashrc` or per shell:
+
+```bash
+export RMW_IMPLEMENTATION=rmw_zenoh_cpp
+export ROS_DOMAIN_ID=1          # any value, as long as it is the same on both machines
+```
+
+Then leave a router running in its own terminal:
+
+```bash
+ros2 run rmw_zenoh_cpp rmw_zenohd
+```
+
+Only one router is needed per machine, and it can outlive individual launches.
+
+Do not set these for a local one-machine run — Gazebo and Isaac use the default RMW, and
+forcing zenoh puts the inference nodes on a separate graph from the simulator, so nothing
+connects and no error is printed.
+
+## 5. Launching
+
+There are two launch files per model: a sim one that brings the control stack with it, and
+a hardware one that does not.
+
+|  | sim (includes control) | hardware |
+| --- | --- | --- |
+| AsyncVLA | `async_vla sim_async.launch.py` | `async_vla asc_async.launch.py` |
+| TIC-VLA | `tic_vla sim_tic.launch.py` | `tic_vla asc_tic.launch.py` |
+
+Each sim launch pins the controller its model needs — `outer_loop_controller` for AsyncVLA,
+`tic_controller` for TIC-VLA. They are not interchangeable: `tic_controller` is a port of
+TIC-VLA's benchmark driver and oversteers badly on AsyncVLA's shorter chunks.
+
+Activate the matching conda env first — the `sys1`/`sys2` wrapper scripts resolve their
+interpreter from `PATH`.
+
+### Sim on one machine
+
+```bash
+conda activate asyncvla
+ros2 launch async_vla sim_async.launch.py device:=dsk
+ros2 launch async_vla sim_async.launch.py device:=dsk sim:=isaac
+
+conda activate tic-vla
+ros2 launch tic_vla sim_tic.launch.py device:=dsk
+```
+
+`sim:=gazebo` (the default) starts Gazebo here. `sim:=isaac` starts nothing simulator-side
+— Isaac runs separately — and only adds the camera bridge. Isaac must publish
+`sensor_msgs/Image` on `/cam_raw` and `nav_msgs/Odometry` on `/sim_odom`, and subscribe
+`geometry_msgs/Twist` on `/cmd_vel`. The odometry node republishes `/sim_odom` onto `/odom`,
+so nothing downstream needs to know which simulator is running.
+
+The Gazebo world is a constant at the top of `asc/launch/asc_sim.launch.py`.
+
+### Sim split across two machines
+
+Sim and control on the VM, with the controller matching the model you are pairing with:
+
+```bash
+ros2 launch asc asc_sim.launch.py controller:=outer_loop_controller
+```
+
+Inference on the other machine:
+
+```bash
+ros2 launch async_vla asc_async.launch.py device:=rcp
+```
+
+This needs the zenoh setup in section 4 on both machines.
+
+### Hardware
+
+Control stack on the robot:
+
+```bash
+ros2 launch asc asc.launch.py
+```
+
+Inference on whichever machine:
+
+```bash
+ros2 launch async_vla asc_async.launch.py device:=rcp
+ros2 launch tic_vla   asc_tic.launch.py   device:=dsk
+```
+
+### Arguments
+
+| Launch file | Arguments |
+| --- | --- |
+| `sim_async.launch.py`, `sim_tic.launch.py` | `device`, `sim`, `goal` |
+| `asc_async.launch.py`, `asc_tic.launch.py` | `device`, `goal` |
+| `asc_sim.launch.py` | `sim`, `controller` |
+
+- `device` — `dsk` or `rcp`. Selects model paths and the node wrapper scripts.
+- `sim` — `gazebo` or `isaac`.
+- `goal` — the language instruction, read once at startup.
+- `controller` — only on `asc_sim.launch.py`; the sim launches set it for you.
+
+```bash
+ros2 launch async_vla sim_async.launch.py device:=dsk goal:="Find the red door"
+ros2 launch async_vla sim_async.launch.py --show-args
+```
+
+`--show-args` on a sim launch also lists arguments belonging to the launch files it
+includes. `controller` is among them, but the sim launches override it.

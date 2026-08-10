@@ -14,7 +14,6 @@ from custom_msgs.msg import ActionChunk, TicKVCache, TicImageTokens, TicLatencyM
 from ticvla.models.ticvla import ActionExpert
 
 
-CHECKPOINT_PATH       = os.path.expanduser("~/capstone/code/ticvla/TIC-VLA-model.ckpt")
 ACTION_HORIZON_STEPS  = 30            # 30 steps at 10 Hz = 3 seconds
 VLM_HIDDEN_SIZE       = 896           # Qwen2.5-0.5B hidden dim (InternVL3-1B)
 ACTION_EXPERT_HIDDEN  = 512
@@ -24,13 +23,15 @@ KV_HEAD_DIM           = 64            # InternVL3-1B KV head dim
 KV_CACHE_FEAT_DIM     = KV_NUM_HEADS * KV_HEAD_DIM  # 128
 NUM_IMAGE_TOKENS      = 256           # InternViT-300M tokens per frame
 CONTROL_RATE_HZ       = 10.0
-TARGET_WAYPOINT_IDX   = 10            #TODO tune which chunk step to hand off to controller
 DEVICE_TYPE           = "cuda"
 
 class Sys1(Node):
     def __init__(self):
         super().__init__("sys1")
         self.get_logger().info("[TIC-VLA Sys1] Initialising...")
+
+        self.declare_parameter("checkpoint_path", "")
+        self.checkpoint_path = self.get_parameter("checkpoint_path").get_parameter_value().string_value
 
         self.device = torch.device(DEVICE_TYPE)
         self.action_expert = self.load_action_expert()
@@ -232,8 +233,8 @@ class Sys1(Node):
             num_chunks=ACTION_HORIZON_STEPS,
             kv_cache_feat_dim=KV_CACHE_FEAT_DIM,
         )
-        if os.path.exists(CHECKPOINT_PATH):
-            ckpt = torch.load(CHECKPOINT_PATH, map_location="cpu")
+        if os.path.exists(self.checkpoint_path):
+            ckpt = torch.load(self.checkpoint_path, map_location="cpu")
             state_dict = ckpt.get("state_dict", ckpt)
             ae_dict = {
                 k.replace("model.action_expert.", ""): v
@@ -241,10 +242,10 @@ class Sys1(Node):
                 if k.startswith("model.action_expert.")
             }
             expert.load_state_dict(ae_dict, strict=True)
-            self.get_logger().info(f"ActionExpert weights loaded from {CHECKPOINT_PATH}")
+            self.get_logger().info(f"ActionExpert weights loaded from {self.checkpoint_path}")
         else:
             self.get_logger().warn(
-                f"Checkpoint not found at {CHECKPOINT_PATH} — running with random weights"
+                f"Checkpoint not found at {self.checkpoint_path} — running with random weights"
             )
         return expert.to(torch.bfloat16).to(self.device).eval()
 
