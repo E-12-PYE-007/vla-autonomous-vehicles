@@ -53,6 +53,7 @@ class Sys1(Node):
         # Initialise states
         self.bridge = CvBridge()
         self.curr_img = None
+        self.curr_img_seq_num = None
         self.img_buffer = {}
         self.img_buffer_keys = deque(maxlen=IMAGE_BUFFER_SIZE)
         self.latest_hidden_state = None
@@ -78,6 +79,7 @@ class Sys1(Node):
         self.img_buffer_keys.append(msg.img_seq_num)
         self.img_buffer[msg.img_seq_num] = processed
         self.curr_img = processed
+        self.curr_img_seq_num = msg.img_seq_num
 
     def hidden_state_callback(self, msg: AsyncHiddenState):
         self.latest_hidden_state = torch.tensor(msg.hidden_states.data, dtype=torch.float32).reshape(1, 8, 1024).to(torch.bfloat16).to(self.device)
@@ -88,17 +90,21 @@ class Sys1(Node):
         seq_num = self.latest_hidden_seq_num
         past_img = self.img_buffer.get(seq_num)
         curr_img = self.curr_img
+        # Captured alongside curr_img so the two stay paired even if a new frame
+        # arrives between now and publish_action_chunk.
+        curr_img_seq_num = self.curr_img_seq_num
 
         if projected_actions is None or curr_img is None or past_img is None:
             return
 
         poses = self.inference.run(curr_img, past_img, projected_actions)
-        self.publish_action_chunk(poses, seq_num)
+        self.publish_action_chunk(poses, seq_num, curr_img_seq_num)
 
-    def publish_action_chunk(self, poses: np.ndarray, img_seq_num: int):
+    def publish_action_chunk(self, poses: np.ndarray, img_seq_num: int, curr_img_seq_num: int):
         chunk = ActionChunk()
         chunk.header.stamp = self.get_clock().now().to_msg()
         chunk.seq_num = img_seq_num
+        chunk.curr_img_seq_num = curr_img_seq_num
 
         for t in range(poses.shape[1]):
             pose = Pose2D()

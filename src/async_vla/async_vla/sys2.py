@@ -92,6 +92,7 @@ class Sys2(Node):
         chunk = ActionChunk()
         chunk.header.stamp = self.get_clock().now().to_msg()
         chunk.seq_num = img_seq_num
+        chunk.curr_img_seq_num = img_seq_num  # sys2 only conditions on one frame
         for t in range(poses.shape[1]):
             pose = Pose2D()
             # y passed through unmirrored — matches sys1's convention (see sys1.publish_action_chunk).
