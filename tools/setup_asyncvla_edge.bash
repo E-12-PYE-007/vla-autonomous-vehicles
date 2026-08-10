@@ -30,11 +30,11 @@ echo "[2/5] Installing Miniconda..."
 if [[ -d "$CONDA_DIR" ]] || command -v conda &>/dev/null; then
     echo "  Conda already installed — skipping."
 else
-    wget -q --show-progress "https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh" \
-        -O "$HOME/Miniconda3-latest-Linux-x86_64.sh"
-    chmod +x "$HOME/Miniconda3-latest-Linux-x86_64.sh"
-    bash "$HOME/Miniconda3-latest-Linux-x86_64.sh" -b -p "$CONDA_DIR"
-    rm "$HOME/Miniconda3-latest-Linux-x86_64.sh"
+    wget -q --show-progress "https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-aarch64.sh" \
+        -O "$HOME/Miniconda3-latest-Linux-aarch64.sh"
+    chmod +x "$HOME/Miniconda3-latest-Linux-aarch64.sh"
+    bash "$HOME/Miniconda3-latest-Linux-aarch64.sh" -b -p "$CONDA_DIR"
+    rm "$HOME/Miniconda3-latest-Linux-aarch64.sh"
     "$CONDA_DIR/bin/conda" init bash
 fi
 
