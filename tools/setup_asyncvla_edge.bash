@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Edge Setup — AsyncVLA sys1 (small head only, aarch64)
+# Edge Setup — AsyncVLA sys1 (aarch64 / Jetson)
 #
-# Installs only the packages that sys1 actually imports at runtime, using pinned
-# versions from AsyncVLA's requirements.txt. Skips AsyncVLA's setup.py entirely
-# to avoid tensorflow-graphics and other deps with no aarch64 wheels.
+# Installs the same packages as setup_asyncvla_desktop.bash with two differences:
+#   1. Uses the aarch64 Miniconda installer.
+#   2. Installs prismatic with --no-deps to skip tensorflow-graphics, which
+#      declares tensorflow-addons as a dependency that has no aarch64 wheels.
+#      All other packages from requirements.txt that are in the runtime import
+#      chain are installed explicitly below.
 #
 # Prerequisite: AsyncVLA repo already cloned at $BASE_DIR/AsyncVLA
 #
@@ -55,13 +58,10 @@ else
 fi
 
 
-# --- Step 5: Install runtime dependencies ---
-# Pinned versions match AsyncVLA's requirements.txt. AsyncVLA's setup.py is not
-# used because it declares tensorflow-graphics which has no aarch64 PyPI wheels.
-echo "[5/6] Installing runtime dependencies..."
+# --- Step 5: Install dependencies ---
+echo "[5/6] Installing dependencies..."
 conda activate asyncvla
 
-# Core ML
 pip install \
     numpy==1.26.4 \
     torch==2.2.0 \
@@ -69,25 +69,31 @@ pip install \
     torchaudio==2.2.0 \
     pillow==12.2.0 \
     efficientnet_pytorch==0.7.1 \
-    timm==0.9.10
+    timm==0.9.10 \
+    opencv-python-headless==4.11.0.86
 
-# cv_bridge needs cv2
-pip install opencv-python-headless==4.11.0.86
-
-# Transformers stack — pinned fork required by AsyncVLA for bidirectional attention
 pip install \
+    huggingface_hub==0.29.1 \
     tokenizers==0.19.1 \
     sentencepiece==0.1.99 \
-    huggingface_hub==0.29.1 \
     accelerate==1.13.0 \
-    draccus==0.8.0
+    draccus==0.8.0 \
+    rich==15.0.0 \
+    peft==0.11.1
 
+# Pinned transformers fork required by AsyncVLA for bidirectional attention
 pip install git+https://github.com/moojink/transformers-openvla-oft.git@bc339d9ad707454c0c115970db43c260067c61ab
 
+# TensorFlow stack — imported at module level in prismatic's dataset pipeline
+pip install tensorflow==2.15.0 tensorflow_datasets==4.9.3
 
-# --- Step 6: Install prismatic and vint_train without their declared deps ---
-# --no-deps skips setup.py dependency resolution entirely; all required packages
-# are already installed above.
+# AsyncVLA dataset loading library
+pip install git+https://github.com/moojink/dlimp_openvla@040105d256bd28866cc6620621a3d5f7b6b91b46
+
+
+# --- Step 6: Install prismatic and vint_train ---
+# --no-deps skips tensorflow-graphics (and its tensorflow-addons dependency)
+# which has no aarch64 wheels. All runtime deps are already installed above.
 echo "[6/6] Installing prismatic and vint_train..."
 cd "$ASYNCVLA_DIR"
 pip install --no-deps -e .
