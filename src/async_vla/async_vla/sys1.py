@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 
+import importlib.util
 import os
+import sys
+import types
 from collections import deque
 from functools import lru_cache
 
@@ -16,7 +19,57 @@ from geometry_msgs.msg import Pose2D
 from rclpy.node import Node
 from custom_msgs.msg import ActionChunk, AsyncHiddenState, ImageWithSeqNum
 
-from prismatic.models.small_head import Edge_adapter
+
+def _load_edge_adapter():
+    # A direct `from prismatic.models.small_head import Edge_adapter` initialises
+    # prismatic/__init__.py, which chains through prismatic/vla/datasets and imports
+    # tensorflow — a package with no aarch64 wheel. This function loads small_head.py
+    # via importlib and pre-registers stub modules for the prismatic.vla.constants
+    # names it needs, so the full package init is never executed.
+    asyncvla_source = next(
+        (p for p in sys.path if os.path.exists(os.path.join(p, 'prismatic'))),
+        None,
+    )
+    if asyncvla_source is None:
+        raise RuntimeError(
+            'AsyncVLA source not found on sys.path. '
+            'Ensure the AsyncVLA repo root is prepended to sys.path before '
+            'importing this module (sys1_dsk / sys1_rcp do this automatically).'
+        )
+
+    constants = types.ModuleType('prismatic.vla.constants')
+    constants.ACTION_DIM = 4
+    constants.ACTION_TOKEN_BEGIN_IDX = 0
+    constants.IGNORE_INDEX = -100
+    constants.NUM_ACTIONS_CHUNK = 8
+    constants.STOP_INDEX = 2
+
+    prismatic_pkg = types.ModuleType('prismatic')
+    prismatic_pkg.__path__ = [os.path.join(asyncvla_source, 'prismatic')]
+    vla_pkg = types.ModuleType('prismatic.vla')
+    vla_pkg.__path__ = [os.path.join(asyncvla_source, 'prismatic', 'vla')]
+
+    sys.modules.setdefault('prismatic', prismatic_pkg)
+    sys.modules.setdefault('prismatic.vla', vla_pkg)
+    sys.modules['prismatic.vla.constants'] = constants
+
+    # The public visualnav-transformer submodule may not define MultiLayerDecoder_idcat
+    # (an older name). Patch it so small_head.py can import without error.
+    try:
+        from vint_train.models.vint import self_attention
+        if not hasattr(self_attention, 'MultiLayerDecoder_idcat'):
+            self_attention.MultiLayerDecoder_idcat = self_attention.MultiLayerDecoder_trans
+    except Exception:
+        pass
+
+    small_head_path = os.path.join(asyncvla_source, 'prismatic', 'models', 'small_head.py')
+    spec = importlib.util.spec_from_file_location('asyncvla_small_head_runtime', small_head_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.Edge_adapter
+
+
+Edge_adapter = _load_edge_adapter()
 
 
 RESUME_STEP = 750000
