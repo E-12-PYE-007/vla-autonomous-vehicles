@@ -33,6 +33,7 @@ setup(
             'inner_loop_controller = asc.inner_loop_controller:main',
             'roboclaw_for_motors = asc.roboclaw_for_motors:main',
             'pure_pursuit_controller = asc.pure_pursuit_controller:main',
+            'async_pd_controller = asc.async_pd_controller:main',
         ],
     },
 )
