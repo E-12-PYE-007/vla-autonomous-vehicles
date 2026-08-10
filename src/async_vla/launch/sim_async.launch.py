@@ -32,6 +32,7 @@ import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
@@ -65,6 +66,13 @@ def generate_launch_description():
                 default_value="Go to the yellow bin",
                 description="Language goal for the VLA.",
             ),
+            DeclareLaunchArgument(
+                "save_actions",
+                default_value="false",
+                choices=["true", "false"],
+                description="If true, launch store_action_chunks to log sys1/sys2 chunks to "
+                            "data/action_chunks_<timestamp>.csv (relative to the shell's CWD).",
+            ),
             # --- Simulator + control ---
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(asc_sim_launch),
@@ -82,11 +90,13 @@ def generate_launch_description():
                 }.items(),
             ),
             # Snapshots sys1 + sys2 action chunks to CSV once per second for offline plotting.
+            # Only launched when save_actions:=true.
             Node(
                 package="async_vla",
                 executable="store_action_chunks",
                 name="store_action_chunks",
                 output="screen",
+                condition=IfCondition(LaunchConfiguration("save_actions")),
             ),
         ]
     )
