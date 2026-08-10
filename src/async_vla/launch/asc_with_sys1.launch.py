@@ -22,7 +22,7 @@ from launch.actions import IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
 
-SHEAD_PATH = "/vla_storage/capstone/code/asyncvla/AsyncVLA/AsyncVLA_release"
+SHEAD_PATH = "/home/asc/asyncvla-test/AsyncVLA/AsyncVLA_release"
 
 
 def generate_launch_description():
