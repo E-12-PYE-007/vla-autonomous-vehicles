@@ -1,13 +1,30 @@
 #!/usr/bin/env python3
+"""AsyncVLA in simulation, everything on one machine.
 
-"""AsyncVLA and sim launch (to be ran on remote desktop)
+Brings up the simulator, the asc control nodes and the AsyncVLA inference nodes. The
+controller is pinned to outer_loop_controller here — tic_controller's 1.0 m lookahead
+oversteers badly on AsyncVLA's shorter chunks, and having picked the wrong one by
+default has cost real debugging time before.
 
-Starts Gazebo (via earthrover_vla_bringup), the asc control nodes in
-sim-compatible configuration, and the AsyncVLA inference nodes.
+Run from a shell with the asyncvla conda env active, since the sys1/sys2 wrapper scripts
+resolve their interpreter from PATH:
 
-Usage:
-    ros2 launch async_vla sim.launch.py
-    ros2 launch async_vla sim.launch.py worldfile:=unempty_office_square.sdf
+    conda activate asyncvla
+
+    ros2 launch async_vla sim_async.launch.py device:=dsk
+    ros2 launch async_vla sim_async.launch.py device:=dsk sim:=isaac
+    ros2 launch async_vla sim_async.launch.py device:=rcp goal:="Find the red door"
+
+sim:=gazebo starts Gazebo here. sim:=isaac expects Isaac to be running already,
+publishing sensor_msgs/Image on /cam_raw and nav_msgs/Odometry on /sim_odom, and
+subscribing geometry_msgs/Twist on /cmd_vel.
+
+The Gazebo world and the controller are fixed here; change them in asc_sim.launch.py,
+which this includes.
+
+For hardware, or to split sim and inference across two machines, use
+asc_async.launch.py instead.
+
 """
 
 import os
@@ -19,66 +36,50 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
-def generate_launch_description():
-    worldfile = LaunchConfiguration("worldfile")
 
-    earthrover_bringup_launch = os.path.join(
-        get_package_share_directory("earthrover_vla_bringup"),
-        "launch",
-        "launch.py",
+def generate_launch_description():
+    asc_sim_launch = os.path.join(
+        get_package_share_directory("asc"), "launch", "asc_sim.launch.py"
+    )
+    async_inference_launch = os.path.join(
+        get_package_share_directory("async_vla"), "launch", "asc_async.launch.py"
     )
 
     return LaunchDescription(
         [
             DeclareLaunchArgument(
-                "worldfile",
-                default_value="unempty_office_square.sdf",
-                description="Gazebo world file (relative to earthrover_vla_simulation/worlds/templates).",
+                "device",
+                default_value="dsk",
+                description="Which machine this is running on: dsk | rcp. Selects the "
+                            "model paths and the node wrapper scripts.",
+            ),
+            DeclareLaunchArgument(
+                "sim",
+                default_value="gazebo",
+                choices=["gazebo", "isaac"],
+                description="Which simulator to pair with. gazebo is started here; isaac "
+                            "runs separately and only needs the camera bridge.",
             ),
             DeclareLaunchArgument(
                 "goal",
                 default_value="Go to the yellow bin",
                 description="Language goal for the VLA.",
             ),
-            # --- Simulator ---
+            # --- Simulator + control ---
             IncludeLaunchDescription(
-                PythonLaunchDescriptionSource(earthrover_bringup_launch),
+                PythonLaunchDescriptionSource(asc_sim_launch),
                 launch_arguments={
-                    "mode": "sim",
-                    "worldfile": worldfile,
+                    "sim": LaunchConfiguration("sim"),
+                    "controller": "outer_loop_controller",
                 }.items(),
             ),
-            # --- ASC control nodes (sim mode) ---
-            # Subscribes to /odom (Odometry from Gazebo bridge) and republishes as odom_pose2d (Pose2D)
-            Node(
-                package="asc",
-                executable="odometry",
-                name="odometry",
-                output="screen",
-                parameters=[{"use_sim": True}],
-            ),
-            # PD waypoint controller — reference AsyncVLA controller, publishes /cmd_vel at 10 Hz
-            Node(
-                package="asc",
-                executable="async_pd_controller",
-                name="async_pd_controller",
-                output="screen",
-                parameters=[{"use_sim": True}],
-            ),
-            # --- AsyncVLA inference nodes ---
-            Node(
-                package="async_vla",
-                executable="sys2",
-                name="sys2",
-                output="screen",
-                parameters=[{"goal": LaunchConfiguration("goal")}, {"use_sim": True}],
-            ),
-            Node(
-                package="async_vla",
-                executable="sys1",
-                name="sys1",
-                output="screen",
-                parameters=[{"use_sim": True}],
+            # --- Inference ---
+            IncludeLaunchDescription(
+                PythonLaunchDescriptionSource(async_inference_launch),
+                launch_arguments={
+                    "device": LaunchConfiguration("device"),
+                    "goal": LaunchConfiguration("goal"),
+                }.items(),
             ),
             # Snapshots sys1 + sys2 action chunks to CSV once per second for offline plotting.
             Node(

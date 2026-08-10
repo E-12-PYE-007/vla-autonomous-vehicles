@@ -10,7 +10,6 @@ from torch.nn.utils.rnn import pad_sequence
 import rclpy
 from cv_bridge import CvBridge
 from rclpy.node import Node
-from sensor_msgs.msg import Image
 from geometry_msgs.msg import Pose2D
 from custom_msgs.msg import ActionChunk, AsyncHiddenState, ImageWithSeqNum
 
@@ -27,9 +26,7 @@ from transformers import AutoConfig, AutoImageProcessor, AutoModelForVision2Seq,
 from transformers.modeling_outputs import CausalLMOutputWithPast
 
 
-VLA_PATH = os.path.expanduser("~/capstone/code/asyncvla/AsyncVLA/AsyncVLA_release")
 RESUME_STEP = 750000
-DEFAULT_GOAL = "Go to the yellow bin"
 DEVICE_TYPE = "cuda"
 METRIC_WAYPOINT_SPACING = 0.1  # metres per waypoint unit (matches sys1)
 SYS2_RATE_HZ = 5.0
@@ -40,18 +37,17 @@ class Sys2(Node):
         super().__init__("sys2")
         self.get_logger().info("[AsyncVLA Sys2] initialising...")
 
+        self.declare_parameter("vla_path", "")
+        vla_path = self.get_parameter("vla_path").get_parameter_value().string_value
+
         # Load model
-        vla, action_proj, action_head, device, num_patches, action_tokenizer, processor = _load_model(VLA_PATH, RESUME_STEP)
+        vla, action_proj, action_head, device, num_patches, action_tokenizer, processor = _load_model(vla_path, RESUME_STEP)
         self.inference = Inference(vla, action_proj, action_head, device, num_patches, action_tokenizer, processor)
         self.get_logger().info("[AsyncVLA Sys2] Model loaded")
 
-        self.declare_parameter("goal", DEFAULT_GOAL)
+        self.declare_parameter("goal", "")
         self.goal_text = self.get_parameter("goal").get_parameter_value().string_value
         self.get_logger().info(f"[AsyncVLA Sys2] Goal set as: '{self.goal_text}'")
-
-        self.declare_parameter("use_sim", False)
-        use_sim = bool(self.get_parameter("use_sim").value)
-        self._sim_seq_num = 0
 
         # Latest observation (updated by img_callback, consumed by timer_callback)
         self.latest_img = None
@@ -63,21 +59,10 @@ class Sys2(Node):
 
         # Subscribers
         self.bridge = CvBridge()
-        if use_sim:
-            self.create_subscription(Image, "/cam", self.sim_img_callback, 1)
-        else:
-            self.create_subscription(ImageWithSeqNum, "/cam", self.img_callback, 1)
+        self.create_subscription(ImageWithSeqNum, "/cam", self.img_callback, 1)
 
         self.create_timer(1.0 / SYS2_RATE_HZ, self.timer_callback)
         self.get_logger().info(f"[AsyncVLA Sys2] Triggering main loop at {SYS2_RATE_HZ} Hz...")
-
-    def sim_img_callback(self, msg: Image):
-        wrapped = ImageWithSeqNum()
-        wrapped.header = msg.header
-        wrapped.img = msg
-        wrapped.img_seq_num = self._sim_seq_num
-        self._sim_seq_num += 1
-        self.img_callback(wrapped)
 
     def img_callback(self, msg: ImageWithSeqNum):
         """Stash latest frame; inference runs on the timer, not here."""
@@ -258,6 +243,11 @@ def _load_model(vla_path: str, resume_step: int):
     action_proj = Proj_Actiontokens(input_dim=vla.llm_dim, hidden_dim=vla.llm_dim, action_dim=1024)
     action_proj.load_state_dict(_load_checkpoint("action_proj", vla_path, resume_step))
     action_proj = action_proj.to(torch.bfloat16).to(device)
+
+    # Upstream run_vla.py runs both of these in eval mode. Leaving them in train mode
+    # keeps dropout active during inference and makes the output non-deterministic.
+    vla.eval()
+    action_proj.eval()
 
     action_head = L1RegressionActionHead_idcat(
         input_dim=vla.llm_dim, hidden_dim=vla.llm_dim, action_dim=ACTION_DIM
