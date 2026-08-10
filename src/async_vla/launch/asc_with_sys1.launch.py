@@ -36,7 +36,7 @@ def generate_launch_description():
         ),
         Node(
             package="async_vla",
-            executable="sys1_rcp",
+            executable="sys1_hw",
             name="sys1",
             output="screen",
             parameters=[{"shead_path": SHEAD_PATH}],
