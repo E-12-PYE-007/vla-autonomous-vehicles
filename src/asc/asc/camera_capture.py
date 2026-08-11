@@ -28,6 +28,7 @@ class CameraCaptureNode(Node):
         self.seq_num = 0
 
         self.camera = self._open_camera(CAMERA_DEVICE)
+        self.camera.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
         self.camera.set(cv2.CAP_PROP_FRAME_WIDTH, FRAME_WIDTH)
         self.camera.set(cv2.CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT)
         self.camera.set(cv2.CAP_PROP_FPS, FPS)
