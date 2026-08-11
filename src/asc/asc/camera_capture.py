@@ -11,7 +11,7 @@ from custom_msgs.msg import ImageWithSeqNum
 CAMERA_DEVICE = 1
 FRAME_WIDTH = 1920
 FRAME_HEIGHT = 1080
-FPS = 5.0
+FPS = 10.0
 JPEG_QUALITY = 80
 SHOW_PREVIEW = False
 AUTOFOCUS = False
