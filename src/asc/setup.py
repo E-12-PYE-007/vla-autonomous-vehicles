@@ -28,6 +28,7 @@ setup(
     entry_points={
         'console_scripts': [
             'camera_capture = asc.camera_capture:main',
+            'camera_adapter = asc.camera_adapter:main',
             'odometry = asc.odometry:main',
             'outer_loop_controller = asc.outer_loop_controller:main',
             'inner_loop_controller = asc.inner_loop_controller:main',
