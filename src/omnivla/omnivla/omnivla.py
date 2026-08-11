@@ -179,7 +179,7 @@ class Omnivla(Node):
         self.get_logger().info("[OmniVLA] Triggering main control loop...")
 
     def img_callback(self, msg: ImageWithSeqNum):
-        img = PILImage.fromarray(self.bridge.imgmsg_to_cv2(msg.img, desired_encoding="rgb8"))
+        img = PILImage.fromarray(self.bridge.compressed_imgmsg_to_cv2(msg.img, desired_encoding="rgb8"))
         seq_num = msg.img_seq_num
         self.latest_img["img"] = img
         self.latest_img["seq_num"] = seq_num

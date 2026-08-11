@@ -79,7 +79,7 @@ class Sys2(Node):
 
     def img_callback(self, msg: ImageWithSeqNum):
         """Stash latest frame; inference runs on the timer, not here."""
-        img = PILImage.fromarray(self.bridge.imgmsg_to_cv2(msg.img, desired_encoding="rgb8"))
+        img = PILImage.fromarray(self.bridge.compressed_imgmsg_to_cv2(msg.img, desired_encoding="rgb8"))
         with self._img_lock:
             self.latest_img = img
             self.latest_img_seq_num = msg.img_seq_num

@@ -3,8 +3,8 @@
 
 import cv2
 import rclpy
-from cv_bridge import CvBridge
 from rclpy.node import Node
+from sensor_msgs.msg import CompressedImage
 
 from custom_msgs.msg import ImageWithSeqNum
 
@@ -12,6 +12,7 @@ CAMERA_DEVICE = 1
 FRAME_WIDTH = 1920
 FRAME_HEIGHT = 1080
 FPS = 5.0
+JPEG_QUALITY = 80
 SHOW_PREVIEW = False
 AUTOFOCUS = False
 FOCUS = 0
@@ -23,7 +24,6 @@ class CameraCaptureNode(Node):
     def __init__(self):
         super().__init__("camera_capture")
 
-        self.bridge = CvBridge()
         self.publisher = self.create_publisher(ImageWithSeqNum, "/cam", 10)
         self.seq_num = 0
 
@@ -62,11 +62,21 @@ class CameraCaptureNode(Node):
             self.get_logger().warn("Camera read failed")
             return
 
+        ok, buf = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])
+        if not ok:
+            self.get_logger().warn("JPEG encode failed")
+            return
+
+        compressed = CompressedImage()
+        compressed.header.stamp = self.get_clock().now().to_msg()
+        compressed.header.frame_id = "camera"
+        compressed.format = "jpeg"
+        compressed.data = buf.tobytes()
+
         msg = ImageWithSeqNum()
-        msg.header.stamp = self.get_clock().now().to_msg()
-        msg.header.frame_id = "camera"
+        msg.header = compressed.header
         msg.img_seq_num = self.seq_num
-        msg.img = self.bridge.cv2_to_imgmsg(frame, encoding="bgr8")
+        msg.img = compressed
         self.publisher.publish(msg)
         self.seq_num += 1
 

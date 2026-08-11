@@ -126,7 +126,7 @@ class Sys1(Node):
         self.get_logger().info("[AsyncVLA Sys1] Triggering main control loop...")
 
     def img_callback(self, msg: ImageWithSeqNum):
-        img = PILImage.fromarray(self.bridge.imgmsg_to_cv2(msg.img, desired_encoding="rgb8"))
+        img = PILImage.fromarray(self.bridge.compressed_imgmsg_to_cv2(msg.img, desired_encoding="rgb8"))
         processed = _process_image(img, self.device)
 
         # Evict oldest entry before it gets dropped from the deque

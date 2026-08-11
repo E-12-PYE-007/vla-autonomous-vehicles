@@ -34,7 +34,7 @@ class ImageProcessingNode(Node):
         self.get_logger().info(f"Preprocessing /cam → /tic_vla/pixel_values at {IMAGE_INPUT_SIZE}px")
 
     def image_callback(self, msg: ImageWithSeqNum):
-        cv_img = self.bridge.imgmsg_to_cv2(msg.img, desired_encoding="rgb8")
+        cv_img = self.bridge.compressed_imgmsg_to_cv2(msg.img, desired_encoding="rgb8")
         pil_img = PILImage.fromarray(cv_img)
         # max_num=1 → a single whole-frame tile (NUM_IMAGE_TOKEN visual tokens), matching
         # upstream inference, which uses load_image(..., max_num=1) for both the delayed

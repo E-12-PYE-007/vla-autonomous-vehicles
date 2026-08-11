@@ -1,3 +1,3 @@
 std_msgs/Header header
 int32 img_seq_num
-sensor_msgs/Image img
+sensor_msgs/CompressedImage img
