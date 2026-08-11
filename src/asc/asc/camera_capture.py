@@ -8,7 +8,7 @@ from sensor_msgs.msg import CompressedImage
 
 from custom_msgs.msg import ImageWithSeqNum
 
-CAMERA_DEVICE = 1
+CAMERA_DEVICE = 0
 FRAME_WIDTH = 1920
 FRAME_HEIGHT = 1080
 FPS = 10.0

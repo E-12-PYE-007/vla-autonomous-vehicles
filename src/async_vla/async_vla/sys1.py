@@ -156,6 +156,7 @@ class Sys1(Node):
         sys2_inference_ms = self.latest_sys2_inference_ms
 
         if projected_actions is None or curr_img is None or past_img is None:
+            self.get_logger().info("[AsyncVLA Sys1] Missing imgs or actions")
             return
 
         poses = self.inference.run(curr_img, past_img, projected_actions)
