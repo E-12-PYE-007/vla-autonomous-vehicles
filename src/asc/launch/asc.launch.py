@@ -24,8 +24,8 @@ def generate_launch_description():
             # Outer loop — converts ActionChunk + odom_pose2d into wheel_velocity_reference
             Node(
                 package="asc",
-                executable="outer_loop_controller",
-                name="outer_loop_controller",
+                executable="async_pd_controller",
+                name="async_pd_controller",
                 output="screen",
             ),
             # Inner loop — wheel velocity PID, outputs set_motor_duty_cycle
