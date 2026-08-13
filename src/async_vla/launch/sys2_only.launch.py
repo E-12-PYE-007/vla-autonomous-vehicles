@@ -23,7 +23,7 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument(
             "goal",
-            default_value="Go to the yellow bin",
+            default_value="Go to the black chair",
             description="Language goal for the VLA.",
         ),
         SetEnvironmentVariable("TF_CPP_MIN_LOG_LEVEL", "3"),

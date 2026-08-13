@@ -47,6 +47,7 @@ def launch_setup(context, *args, **kwargs):
             parameters=[
                 {"vla_path": vla_path},
                 {"goal": LaunchConfiguration("goal")},
+                {"sim": LaunchConfiguration("sim")},
             ],
         ),
         # Edge adapter — subscribes /asyncvla/hidden_state + /cam,
@@ -56,7 +57,10 @@ def launch_setup(context, *args, **kwargs):
             executable=f"sys1_{device}",
             name="sys1",
             output="screen",
-            parameters=[{"shead_path": vla_path}],
+            parameters=[
+                {"shead_path": vla_path},
+                {"sim": LaunchConfiguration("sim")},
+            ],
         ),
     ]
 
@@ -75,6 +79,12 @@ def generate_launch_description():
                 "goal",
                 default_value="Go to the yellow bin",
                 description="Language goal for the VLA.",
+            ),
+            DeclareLaunchArgument(
+                "sim",
+                default_value="",
+                description="Simulator in use. 'isaac' makes sys2 subscribe to /vla/cam "
+                            "(sensor_msgs/Image); otherwise it uses /cam (ImageWithSeqNum).",
             ),
             # Silence TensorFlow's startup noise (NUMA, cuDNN/cuFFT/cuBLAS factory,
             # TF-TRT). TF is pulled in transitively but never used for inference.

@@ -14,6 +14,7 @@ from cv_bridge import CvBridge
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
+from sensor_msgs.msg import Image
 from geometry_msgs.msg import Pose2D
 from custom_msgs.msg import ActionChunk, AsyncHiddenState, ImageWithSeqNum
 
@@ -36,6 +37,17 @@ METRIC_WAYPOINT_SPACING = 0.1  # metres per waypoint unit (matches sys1)
 SYS2_RATE_HZ = 5.0
 
 
+def _seq_num_from_stamp(stamp) -> int:
+    """Per-frame id derived from a Header stamp, in milliseconds.
+
+    Isaac's raw sensor_msgs/Image carries no seq num like ImageWithSeqNum does, so
+    sys1 and sys2 each derive one from the same message stamp to stay aligned. Kept in
+    milliseconds so it fits the int32/uint32 seq_num fields for any realistic sim run.
+    Must match sys1's copy of this helper.
+    """
+    return stamp.sec * 1000 + stamp.nanosec // 1_000_000
+
+
 class Sys2(Node):
     def __init__(self):
         super().__init__("sys2")
@@ -53,6 +65,10 @@ class Sys2(Node):
         self.goal_text = self.get_parameter("goal").get_parameter_value().string_value
         self.get_logger().info(f"[AsyncVLA Sys2] Goal set as: '{self.goal_text}'")
 
+        self.declare_parameter("sim", "")
+        self.sim = self.get_parameter("sim").get_parameter_value().string_value
+        self.get_logger().info(f"[AsyncVLA Sys2] Simulation environment: '{self.sim or 'none'}'")
+
         # Latest observation; locked because img_callback and timer_callback run on
         # different executor threads.
         self._img_lock = Lock()
@@ -63,13 +79,23 @@ class Sys2(Node):
         self.hidden_state_pub = self.create_publisher(AsyncHiddenState, "/asyncvla/hidden_state", 1)
         self.omni_action_chunk_pub = self.create_publisher(ActionChunk, "/asyncvla/omni_action_chunk", 1)
 
-        # Subscribers. /cam gets its own callback group so frames keep arriving during
-        # the forward pass; see main().
+        # Subscribers. The camera topic gets its own callback group so frames keep
+        # arriving during the forward pass; see main().
         self.bridge = CvBridge()
-        self.create_subscription(
-            ImageWithSeqNum, "/cam", self.img_callback, 1,
-            callback_group=MutuallyExclusiveCallbackGroup(),
-        )
+        if self.sim == "isaac":
+            # Isaac publishes a plain sensor_msgs/Image on /vla/cam.
+            self.create_subscription(
+                Image, "/vla/cam", self.isaac_img_callback, 1,
+                callback_group=MutuallyExclusiveCallbackGroup(),
+            )
+            self.get_logger().info("[AsyncVLA Sys2] Subscribed to /vla/cam (Image, isaac)")
+        else:
+            # Real robot / default: ImageWithSeqNum on /cam.
+            self.create_subscription(
+                ImageWithSeqNum, "/cam", self.img_callback, 1,
+                callback_group=MutuallyExclusiveCallbackGroup(),
+            )
+            self.get_logger().info("[AsyncVLA Sys2] Subscribed to /cam (ImageWithSeqNum)")
 
         self.create_timer(
             1.0 / SYS2_RATE_HZ, self.timer_callback,
@@ -83,6 +109,15 @@ class Sys2(Node):
         with self._img_lock:
             self.latest_img = img
             self.latest_img_seq_num = msg.img_seq_num
+
+    def isaac_img_callback(self, msg: Image):
+        """Isaac's /vla/cam is a raw Image with no seq num, so derive one from the
+        header stamp. sys1 sees the same message and derives the same id, which the
+        async pipeline relies on to pair this frame with sys2's hidden state."""
+        img = PILImage.fromarray(self.bridge.imgmsg_to_cv2(msg, desired_encoding="rgb8"))
+        with self._img_lock:
+            self.latest_img = img
+            self.latest_img_seq_num = _seq_num_from_stamp(msg.header.stamp)
 
     def timer_callback(self):
         with self._img_lock:

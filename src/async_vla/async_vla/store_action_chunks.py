@@ -40,10 +40,22 @@ import rclpy
 from cv_bridge import CvBridge
 from custom_msgs.msg import ActionChunk, ImageWithSeqNum
 from rclpy.node import Node
+from sensor_msgs.msg import Image
 
 
 SNAPSHOT_RATE_HZ = 1.0
 IMAGE_BUFFER_SIZE = 100  # frames of /cam to keep around, matches sys1's window
+
+
+def _seq_num_from_stamp(stamp) -> int:
+    """Per-frame id derived from a Header stamp, in milliseconds.
+
+    Isaac's raw sensor_msgs/Image on /vla/cam carries no seq num like ImageWithSeqNum
+    does, so it is derived from the stamp the same way sys1/sys2 do it, keeping the
+    buffer keys here aligned with the seq_num on the chunks they publish. Must match
+    sys1/sys2's copy of this helper.
+    """
+    return stamp.sec * 1000 + stamp.nanosec // 1_000_000
 
 
 class StoreActionChunksNode(Node):
@@ -58,6 +70,11 @@ class StoreActionChunksNode(Node):
         # Same language goal passed to sys2, logged alongside the chunks it produced.
         self.declare_parameter("goal", "")
         self.goal_text = self.get_parameter("goal").get_parameter_value().string_value
+
+        # Which camera topic the chunks were computed from: isaac uses raw Image on
+        # /vla/cam, everything else ImageWithSeqNum on /cam. Matches sys1/sys2.
+        self.declare_parameter("sim", "")
+        self.sim = self.get_parameter("sim").get_parameter_value().string_value
 
         run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.csv_path = os.path.join(output_dir, f"action_chunks_{run_id}.csv")
@@ -91,7 +108,12 @@ class StoreActionChunksNode(Node):
 
         self.create_subscription(ActionChunk, "/asyncvla/action_chunk", self._sys1_callback, 10)
         self.create_subscription(ActionChunk, "/asyncvla/omni_action_chunk", self._sys2_callback, 10)
-        self.create_subscription(ImageWithSeqNum, "/cam", self._img_callback, 10)
+        if self.sim == "isaac":
+            self.create_subscription(Image, "/vla/cam", self._isaac_img_callback, 10)
+            self.get_logger().info("Logging frames from /vla/cam (Image, isaac)")
+        else:
+            self.create_subscription(ImageWithSeqNum, "/cam", self._img_callback, 10)
+            self.get_logger().info("Logging frames from /cam (ImageWithSeqNum)")
         self.create_timer(1.0 / SNAPSHOT_RATE_HZ, self._snapshot)
 
         self.get_logger().info(f"Logging action chunks to {self.csv_path}")
@@ -107,15 +129,22 @@ class StoreActionChunksNode(Node):
 
     def _img_callback(self, msg: ImageWithSeqNum):
         frame = self._bridge.imgmsg_to_cv2(msg.img, desired_encoding="bgr8")
+        self._store_frame(frame, msg.img_seq_num)
+
+    def _isaac_img_callback(self, msg: Image):
+        frame = self._bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
+        self._store_frame(frame, _seq_num_from_stamp(msg.header.stamp))
+
+    def _store_frame(self, frame, seq_num: int):
         # Node clock, matching stamp_sec. Not msg.header.stamp, which is sim time here
         # while this node runs with use_sim_time unset.
         arrival_sec = self.get_clock().now().nanoseconds / 1e9
         with self._img_lock:
             if len(self._img_buffer_keys) == IMAGE_BUFFER_SIZE:
                 self._img_buffer.pop(self._img_buffer_keys[0], None)
-            self._img_buffer_keys.append(msg.img_seq_num)
-            self._img_buffer[msg.img_seq_num] = frame
-        self._frames_writer.writerow([msg.img_seq_num, f"{arrival_sec:.6f}"])
+            self._img_buffer_keys.append(seq_num)
+            self._img_buffer[seq_num] = frame
+        self._frames_writer.writerow([seq_num, f"{arrival_sec:.6f}"])
         self._frames_file.flush()
 
     def _save_chunk_image(self, seq_num: int) -> str:

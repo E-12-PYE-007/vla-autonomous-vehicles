@@ -28,7 +28,7 @@ COMMAND_TIMEOUT_SEC = 0.75
 V_HARD_MAX = 0.5             # pre-shape clip on linear vel
 W_HARD_MAX = 1.0             # pre-shape clip on angular vel
 MAXV = 0.3                   # turn-shape-preserving max linear
-MAXW = 0.3                   # turn-shape-preserving max angular
+MAXW = 0.6                   # turn-shape-preserving max angular
 
 WHEEL_BASE = 0.22
 EPS = 1e-8

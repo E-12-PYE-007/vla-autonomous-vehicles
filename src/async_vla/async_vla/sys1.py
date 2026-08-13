@@ -17,6 +17,7 @@ import rclpy
 from cv_bridge import CvBridge
 from geometry_msgs.msg import Pose2D
 from rclpy.node import Node
+from sensor_msgs.msg import Image
 from custom_msgs.msg import ActionChunk, AsyncHiddenState, ImageWithSeqNum
 
 
@@ -84,6 +85,17 @@ IMAGE_BUFFER_SIZE = 80  # 8 secs worth of data
 SYS1_RATE_HZ = 8.0
 
 
+def _seq_num_from_stamp(stamp) -> int:
+    """Per-frame id derived from a Header stamp, in milliseconds.
+
+    Isaac's raw sensor_msgs/Image carries no seq num like ImageWithSeqNum does, so
+    sys1 and sys2 each derive one from the same message stamp to stay aligned. sys1
+    keys its image buffer on this id and looks it up using the seq num sys2 stamps onto
+    the hidden state, so both must derive it identically. Must match sys2's copy.
+    """
+    return stamp.sec * 1000 + stamp.nanosec // 1_000_000
+
+
 _normalise = transforms.Normalize(
     mean=[0.485, 0.456, 0.406],
     std=[0.229, 0.224, 0.225],
@@ -97,6 +109,10 @@ class Sys1(Node):
 
         self.declare_parameter("shead_path", "")
         shead_path = self.get_parameter("shead_path").get_parameter_value().string_value
+
+        self.declare_parameter("sim", "")
+        self.sim = self.get_parameter("sim").get_parameter_value().string_value
+        self.get_logger().info(f"[AsyncVLA Sys1] Simulation environment: '{self.sim or 'none'}'")
 
         # Load model
         shead, self.device = _load_model(shead_path, RESUME_STEP)
@@ -120,22 +136,39 @@ class Sys1(Node):
 
         # Subscribers
         self.create_subscription(AsyncHiddenState, "/asyncvla/hidden_state", self.hidden_state_callback, 1)
-        self.create_subscription(ImageWithSeqNum, "/cam", self.img_callback, 1)
+        if self.sim == "isaac":
+            # Isaac publishes a plain sensor_msgs/Image on /vla/cam.
+            self.create_subscription(Image, "/vla/cam", self.isaac_img_callback, 1)
+            self.get_logger().info("[AsyncVLA Sys1] Subscribed to /vla/cam (Image, isaac)")
+        else:
+            # Real robot / default: ImageWithSeqNum on /cam.
+            self.create_subscription(ImageWithSeqNum, "/cam", self.img_callback, 1)
+            self.get_logger().info("[AsyncVLA Sys1] Subscribed to /cam (ImageWithSeqNum)")
 
         self.create_timer(1.0 / SYS1_RATE_HZ, self.timer_callback)
         self.get_logger().info("[AsyncVLA Sys1] Triggering main control loop...")
 
     def img_callback(self, msg: ImageWithSeqNum):
         img = PILImage.fromarray(self.bridge.compressed_imgmsg_to_cv2(msg.img, desired_encoding="rgb8"))
+        self._store_frame(img, msg.img_seq_num)
+
+    def isaac_img_callback(self, msg: Image):
+        """Isaac's /vla/cam is a raw Image with no seq num, so derive one from the
+        header stamp. sys2 sees the same message and derives the same id, so the seq num
+        it stamps onto the hidden state lines up with the buffer keys here."""
+        img = PILImage.fromarray(self.bridge.imgmsg_to_cv2(msg, desired_encoding="rgb8"))
+        self._store_frame(img, _seq_num_from_stamp(msg.header.stamp))
+
+    def _store_frame(self, img: PILImage.Image, seq_num: int):
         processed = _process_image(img, self.device)
 
         # Evict oldest entry before it gets dropped from the deque
         if len(self.img_buffer_keys) == IMAGE_BUFFER_SIZE:
             self.img_buffer.pop(self.img_buffer_keys[0], None)
-        self.img_buffer_keys.append(msg.img_seq_num)
-        self.img_buffer[msg.img_seq_num] = processed
+        self.img_buffer_keys.append(seq_num)
+        self.img_buffer[seq_num] = processed
         self.curr_img = processed
-        self.curr_img_seq_num = msg.img_seq_num
+        self.curr_img_seq_num = seq_num
 
     def hidden_state_callback(self, msg: AsyncHiddenState):
         self.latest_hidden_state = torch.tensor(msg.hidden_states.data, dtype=torch.float32).reshape(1, 8, 1024).to(torch.bfloat16).to(self.device)

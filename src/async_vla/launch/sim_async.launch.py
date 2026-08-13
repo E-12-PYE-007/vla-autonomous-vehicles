@@ -96,7 +96,10 @@ def generate_launch_description():
                 executable="store_action_chunks",
                 name="store_action_chunks",
                 output="screen",
-                parameters=[{"goal": LaunchConfiguration("goal")}],
+                parameters=[
+                    {"goal": LaunchConfiguration("goal")},
+                    {"sim": LaunchConfiguration("sim")},
+                ],
                 condition=IfCondition(LaunchConfiguration("save_actions")),
             ),
         ]
