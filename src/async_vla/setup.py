@@ -30,6 +30,8 @@ setup(
     entry_points={
         'console_scripts': [
             'store_action_chunks = async_vla.store_action_chunks:main',
+            'record_cmd_odom = async_vla.record_cmd_odom:main',
+            'save_camera_frames = async_vla.save_camera_frames:main',
         ],
     },
 )

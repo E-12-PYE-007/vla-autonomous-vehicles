@@ -70,8 +70,15 @@ def generate_launch_description():
                 "save_actions",
                 default_value="false",
                 choices=["true", "false"],
-                description="If true, launch store_action_chunks to log sys1/sys2 chunks to "
-                            "data/action_chunks_<timestamp>.csv (relative to the shell's CWD).",
+                description="If true, launch store_action_chunks and record_cmd_odom to log "
+                            "sys1/sys2 chunks and commanded-vs-measured velocities to "
+                            "data/*_<timestamp>.csv (relative to the shell's CWD).",
+            ),
+            DeclareLaunchArgument(
+                "odom_topic",
+                default_value="/sim_odom",
+                description="Measured-odometry topic for record_cmd_odom. /sim_odom for "
+                            "isaac; pass /odom for gazebo.",
             ),
             # --- Simulator + control ---
             IncludeLaunchDescription(
@@ -100,6 +107,17 @@ def generate_launch_description():
                     {"goal": LaunchConfiguration("goal")},
                     {"sim": LaunchConfiguration("sim")},
                 ],
+                condition=IfCondition(LaunchConfiguration("save_actions")),
+            ),
+            # Records commanded /cmd_vel against measured /sim_odom, aligned per tick,
+            # to data/cmd_odom_<timestamp>.csv. Same save_actions switch as above.
+            # Defaults to /sim_odom (isaac); pass odom_topic:=/odom for gazebo.
+            Node(
+                package="async_vla",
+                executable="record_cmd_odom",
+                name="record_cmd_odom",
+                output="screen",
+                parameters=[{"odom_topic": LaunchConfiguration("odom_topic")}],
                 condition=IfCondition(LaunchConfiguration("save_actions")),
             ),
         ]

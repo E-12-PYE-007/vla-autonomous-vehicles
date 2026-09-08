@@ -17,6 +17,7 @@ from rclpy.node import Node
 from sensor_msgs.msg import Image
 from geometry_msgs.msg import Pose2D
 from custom_msgs.msg import ActionChunk, AsyncHiddenState, ImageWithSeqNum
+from peft import PeftModel
 
 from prismatic.extern.hf.configuration_prismatic import OpenVLAConfig
 from prismatic.extern.hf.modeling_prismatic import OpenVLAForActionPrediction_MMNv1
@@ -33,6 +34,9 @@ from transformers.modeling_outputs import CausalLMOutputWithPast
 
 RESUME_STEP = 750000
 DEVICE_TYPE = "cuda"
+
+# FINETUNE_ADAPTER_DIR = "/home/vla-cap/AsyncVLA/agvla_weights/out/h100/r32_a16_dora1_lr0.0005_bs16/20260904_132010/step-0015000/lora_adapter"
+FINETUNE_ADAPTER_DIR = "/home/vla-cap/AsyncVLA/agvla_weights/out/a100/r32_a16_dora0_lr0.0005_bs16/20260904_143315/step-0010000/lora_adapter"
 METRIC_WAYPOINT_SPACING = 0.1  # metres per waypoint unit (matches sys1)
 SYS2_RATE_HZ = 5.0
 
@@ -57,7 +61,7 @@ class Sys2(Node):
         vla_path = self.get_parameter("vla_path").get_parameter_value().string_value
 
         # Load model
-        vla, action_proj, action_head, device, num_patches, action_tokenizer, processor = _load_model(vla_path, RESUME_STEP)
+        vla, action_proj, action_head, device, num_patches, action_tokenizer, processor = _load_model(self, vla_path, RESUME_STEP, FINETUNE_ADAPTER_DIR)
         self.inference = Inference(vla, action_proj, action_head, device, num_patches, action_tokenizer, processor)
         self.get_logger().info("[AsyncVLA Sys2] Model loaded")
 
@@ -273,7 +277,7 @@ def _load_checkpoint(module_name: str, path: str, step: int) -> dict:
 
 
 @lru_cache(maxsize=1)
-def _load_model(vla_path: str, resume_step: int):
+def _load_model(self, vla_path: str, resume_step: int, adapter_dir: str = ""):
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     if torch.cuda.is_available():
         torch.cuda.set_device(device)
@@ -290,6 +294,11 @@ def _load_model(vla_path: str, resume_step: int):
         torch_dtype=torch.bfloat16,
         low_cpu_mem_usage=True,
     ).to(device)
+
+    if adapter_dir:
+        rclpy.logging.get_logger("sys2").info(f"[AsyncVLA Sys2] Applying fine-tuned adapter: {adapter_dir}")
+        vla = PeftModel.from_pretrained(vla, adapter_dir).merge_and_unload().to(device)
+
     vla.vision_backbone.set_num_images_in_input(2)
     vla.to(dtype=torch.bfloat16, device=device)
 
