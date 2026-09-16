@@ -36,7 +36,8 @@ RESUME_STEP = 750000
 DEVICE_TYPE = "cuda"
 
 # FINETUNE_ADAPTER_DIR = "/home/vla-cap/AsyncVLA/agvla_weights/out/h100/r32_a16_dora1_lr0.0005_bs16/20260904_132010/step-0015000/lora_adapter"
-FINETUNE_ADAPTER_DIR = "/home/vla-cap/AsyncVLA/agvla_weights/out/a100/r32_a16_dora0_lr0.0005_bs16/20260904_143315/step-0010000/lora_adapter"
+# FINETUNE_ADAPTER_DIR = "/home/vla-cap/AsyncVLA/agvla_weights/out/a100/r32_a16_dora0_lr0.0005_bs16/20260904_143315/step-0010000/lora_adapter"
+FINETUNE_DIR = "/home/vla-cap/AsyncVLA/agvla_weights/out/h100/r32_a16_dora0_lr0.0005_bs16/20260916_102204/step-0015000"
 METRIC_WAYPOINT_SPACING = 0.1  # metres per waypoint unit (matches sys1)
 SYS2_RATE_HZ = 5.0
 
@@ -61,7 +62,7 @@ class Sys2(Node):
         vla_path = self.get_parameter("vla_path").get_parameter_value().string_value
 
         # Load model
-        vla, action_proj, action_head, device, num_patches, action_tokenizer, processor = _load_model(self, vla_path, RESUME_STEP, FINETUNE_ADAPTER_DIR)
+        vla, action_proj, action_head, device, num_patches, action_tokenizer, processor = _load_model(self, vla_path, RESUME_STEP, FINETUNE_DIR)
         self.inference = Inference(vla, action_proj, action_head, device, num_patches, action_tokenizer, processor)
         self.get_logger().info("[AsyncVLA Sys2] Model loaded")
 
@@ -277,7 +278,7 @@ def _load_checkpoint(module_name: str, path: str, step: int) -> dict:
 
 
 @lru_cache(maxsize=1)
-def _load_model(self, vla_path: str, resume_step: int, adapter_dir: str = ""):
+def _load_model(self, vla_path: str, resume_step: int, finetune_dir: str = ""):
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     if torch.cuda.is_available():
         torch.cuda.set_device(device)
@@ -295,7 +296,8 @@ def _load_model(self, vla_path: str, resume_step: int, adapter_dir: str = ""):
         low_cpu_mem_usage=True,
     ).to(device)
 
-    if adapter_dir:
+    if finetune_dir:
+        adapter_dir = os.path.join(finetune_dir, "lora_adapter")
         rclpy.logging.get_logger("sys2").info(f"[AsyncVLA Sys2] Applying fine-tuned adapter: {adapter_dir}")
         vla = PeftModel.from_pretrained(vla, adapter_dir).merge_and_unload().to(device)
 
@@ -319,7 +321,16 @@ def _load_model(self, vla_path: str, resume_step: int, adapter_dir: str = ""):
     vla._process_vision_features = _patched_process_vision
 
     action_proj = Proj_Actiontokens(input_dim=vla.llm_dim, hidden_dim=vla.llm_dim, action_dim=1024)
-    action_proj.load_state_dict(_load_checkpoint("action_proj", vla_path, resume_step))
+    if finetune_dir:
+        action_proj_checkpoint = os.path.join(finetune_dir, "action_proj.pt")
+        rclpy.logging.get_logger("sys2").info(
+            f"[AsyncVLA Sys2] Loading fine-tuned action_proj weights: {action_proj_checkpoint}"
+        )
+        action_proj.load_state_dict(
+            _remove_ddp_prefix(torch.load(action_proj_checkpoint, map_location="cpu"))
+        )
+    else:
+        action_proj.load_state_dict(_load_checkpoint("action_proj", vla_path, resume_step))
     action_proj = action_proj.to(torch.bfloat16).to(device)
 
     # Upstream run_vla.py runs both of these in eval mode. Leaving them in train mode
