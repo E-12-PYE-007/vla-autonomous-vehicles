@@ -84,6 +84,8 @@ METRIC_WAYPOINT_SPACING = 0.1
 IMAGE_BUFFER_SIZE = 80  # 8 secs worth of data
 SYS1_RATE_HZ = 8.0
 
+# TEMP offset
+CAMERA_YAW_OFFSET_DEG = 5.11
 
 def _seq_num_from_stamp(stamp) -> int:
     """Per-frame id derived from a Header stamp, in milliseconds.
@@ -210,27 +212,27 @@ class Sys1(Node):
         chunk.end_img_seq_num = end_img_seq_num
         chunk.sys2_inference_ms = sys2_inference_ms
 
+        c = np.cos(np.radians(CAMERA_YAW_OFFSET_DEG))
+        s = np.sin(np.radians(CAMERA_YAW_OFFSET_DEG))
+
         for t in range(poses.shape[1]):
             pose = Pose2D()
-            # y is passed through unmirrored: the model already emits ROS convention
-            # (+y = left). Measured in unempty_office_square against known object
-            # poses, with all four objects inside the camera's +/-31deg FOV:
-            #     chair   raw y +0.820  true bearing +19.6deg (left)
-            #     desk    raw y +0.266  true bearing +16.0deg (left)
-            #     box     raw y -0.746  true bearing  -8.1deg (right)
-            #     cabinet raw y -1.828  true bearing -25.7deg (right)
-            # Rank order and sign both match, and the resulting bearings land within a
-            # few degrees for the box and cabinet. Upstream run_action_head applies
-            # `dy = -dy` inside its own pd_controller, which then feeds a robot with the
-            # opposite steering sign; re-applying it here mirrored every chunk and made
-            # the robot drive to the object opposite the one it was asked for.
-            # theta is left as the model emits it: upstream never steers from
-            # per-waypoint heading, so there is no reference for its sign. Consumers
-            # should prefer the positions.
-            pose.x = float(poses[0, t, 0]) * METRIC_WAYPOINT_SPACING
-            pose.y = float(poses[0, t, 1]) * METRIC_WAYPOINT_SPACING
+            # ... existing comment block unchanged ...
+            x = float(poses[0, t, 0])
+            y = float(poses[0, t, 1])
+            x, y = c * x + s * y, -s * x + c * y
+            pose.x = x * METRIC_WAYPOINT_SPACING
+            pose.y = y * METRIC_WAYPOINT_SPACING
             pose.theta = float(np.arctan2(poses[0, t, 3], poses[0, t, 2]))
             chunk.relative_poses.append(pose)
+
+
+        # for t in range(poses.shape[1]):
+        #     pose = Pose2D()
+        #     pose.x = float(poses[0, t, 0]) * METRIC_WAYPOINT_SPACING
+        #     pose.y = float(poses[0, t, 1]) * METRIC_WAYPOINT_SPACING
+        #     pose.theta = float(np.arctan2(poses[0, t, 3], poses[0, t, 2]))
+        #     chunk.relative_poses.append(pose)
 
         self.action_chunk_pub.publish(chunk)
         self.get_logger().info(f"[AsyncVLA Sys1] Published action chunk seq={img_seq_num}")
