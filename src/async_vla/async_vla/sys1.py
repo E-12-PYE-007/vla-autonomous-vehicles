@@ -217,7 +217,6 @@ class Sys1(Node):
 
         for t in range(poses.shape[1]):
             pose = Pose2D()
-            # ... existing comment block unchanged ...
             x = float(poses[0, t, 0])
             y = float(poses[0, t, 1])
             x, y = c * x + s * y, -s * x + c * y
