@@ -37,7 +37,7 @@ DEVICE_TYPE = "cuda"
 
 # FINETUNE_ADAPTER_DIR = "/home/vla-cap/AsyncVLA/agvla_weights/out/h100/r32_a16_dora1_lr0.0005_bs16/20260904_132010/step-0015000/lora_adapter"
 # FINETUNE_ADAPTER_DIR = "/home/vla-cap/AsyncVLA/agvla_weights/out/a100/r32_a16_dora0_lr0.0005_bs16/20260904_143315/step-0010000/lora_adapter"
-FINETUNE_DIR = "/home/vla-cap/AsyncVLA/agvla_weights/out/h100/r32_a16_dora0_lr0.0005_bs16/20260916_102204/step-0015000"
+FINETUNE_DIR = "/home/vla-cap/AsyncVLA/agvla_weights/out/h100/r32_a16_dora0_lr0.0005_bs16/20260916_102204/step-0005000"
 METRIC_WAYPOINT_SPACING = 0.1  # metres per waypoint unit (matches sys1)
 SYS2_RATE_HZ = 5.0
 
